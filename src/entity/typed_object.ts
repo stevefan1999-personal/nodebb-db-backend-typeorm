@@ -1,5 +1,6 @@
 import {
   BaseEntity,
+  BeforeInsert,
   Check,
   Column,
   JoinColumn,
@@ -42,6 +43,16 @@ export const TypedObject = (
       },
     ])
     parent: DbObject
+
+    @BeforeInsert()
+    private async addToMasterTable(): Promise<void> {
+      await TypedObjectInner.getRepository()
+        .manager.getRepository(DbObject)
+        .save({
+          _key: this._key,
+          type: this.type,
+        })
+    }
   }
 
   return TypedObjectInner
