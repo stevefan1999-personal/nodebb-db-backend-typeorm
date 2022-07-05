@@ -7,6 +7,7 @@ import * as winston from 'winston'
 import { INodeBBDatabaseBackend } from '../types'
 
 import { DbObject, entities } from './entity'
+import { SessionStore } from './session'
 
 const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
   {
@@ -25,15 +26,6 @@ export class TypeORMDatabaseBackend implements INodeBBDatabaseBackend {
 
   get dataSource(): DataSource | null {
     return this.#dataSource?.isInitialized ? this.#dataSource : null
-  }
-
-  static async createConnection(
-    options: DataSourceOptions,
-  ): Promise<DataSource> {
-    return new DataSource({
-      ...options,
-      entities,
-    }).initialize()
   }
 
   static getConnectionOptions(
@@ -81,20 +73,37 @@ export class TypeORMDatabaseBackend implements INodeBBDatabaseBackend {
   async init(): Promise<void> {
     const conf = TypeORMDatabaseBackend.getConnectionOptions()
     try {
-      this.#dataSource = await TypeORMDatabaseBackend.createConnection(conf)
+      this.#dataSource = await new DataSource({
+        ...conf,
+        entities,
+      }).initialize()
       await this.dataSource?.synchronize()
     } catch (err) {
       if (err instanceof Error) {
         winston.error(
-          `NodeBB could not manifest a connection with your specified TypeORM config with the following error: ${err.message}`,
+          `NodeBB could not manifest a connection (for data store) with your specified TypeORM config with the following error: ${err.message}`,
         )
       }
       throw err
     }
   }
 
-  async createSessionStore(_options: any): Promise<Store> {
-    throw 'not implemented'
+  async createSessionStore(options: any): Promise<Store> {
+    const conf = TypeORMDatabaseBackend.getConnectionOptions(options)
+    try {
+      const dataSource = await new DataSource({
+        ...conf,
+        entities: [(await import('./session/entity/session')).Session],
+      }).initialize()
+      return new SessionStore(dataSource)
+    } catch (err) {
+      if (err instanceof Error) {
+        winston.error(
+          `NodeBB could not manifest a connection (for session store) with your specified TypeORM config with the following error: ${err.message}`,
+        )
+      }
+      throw err
+    }
   }
 
   async createIndices(callback: any): Promise<void> {
