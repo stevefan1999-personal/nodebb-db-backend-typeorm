@@ -11,7 +11,7 @@ export interface StringQueryable {
 
   deleteAll(keys: string[]): Promise<void>
 
-  get(key: string): Promise<string>
+  get(key: string): Promise<string | null>
 
   set(key: string, value: string): Promise<void>
 
