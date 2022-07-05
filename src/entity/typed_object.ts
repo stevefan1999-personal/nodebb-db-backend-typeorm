@@ -29,7 +29,12 @@ export const TypedObject = (
     @Check(`"type" = '${type}'`)
     type: ObjectType
 
-    @OneToOne(() => DbObject, { onDelete: 'CASCADE', onUpdate: 'CASCADE' })
+    @OneToOne(() => DbObject, {
+      nullable: false,
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE',
+      orphanedRowAction: 'delete',
+    })
     @JoinColumn([
       {
         foreignKeyConstraintName,
