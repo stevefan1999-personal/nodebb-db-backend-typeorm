@@ -1,4 +1,12 @@
-import { Column, Entity, Index, PrimaryColumn, Unique } from 'typeorm'
+import {
+  Column,
+  Entity,
+  Index,
+  IsNull,
+  PrimaryColumn,
+  Unique,
+  ViewEntity,
+} from 'typeorm'
 
 import { entities } from './index'
 
@@ -85,3 +93,15 @@ export class DbObject {
     })
   }
 }
+
+@ViewEntity('object_live', {
+  expression(conn) {
+    return conn
+      .getRepository(DbObject)
+      .createQueryBuilder('object')
+      .select(['_key', 'type'])
+      .where({ expireAt: IsNull() })
+      .orWhere('object.expireAt > CURRENT_TIMESTAMP')
+  },
+})
+export class DbObjectLive extends DbObject {}
