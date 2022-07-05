@@ -23,11 +23,11 @@ export interface StringQueryable {
 
   expire(key: string, seconds: number): Promise<void>
 
-  expireAt(key: string, timestamp: Date): Promise<void>
+  expireAt(key: string, timestampInSeconds: number): Promise<void>
 
   pexpire(key: string, ms: number): Promise<void>
 
-  pexpireAt(key: string, timestamp: Date): Promise<void>
+  pexpireAt(key: string, timestampInMs: number): Promise<void>
 
   ttl(key: string): Promise<number>
 
