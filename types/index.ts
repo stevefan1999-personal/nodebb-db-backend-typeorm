@@ -34,7 +34,11 @@ export type RedisStyleMatchString =
   | `*${string}`
   | `${string}*`
   | `*${string}*`
-export type RedisStyleRangeString = `${'(' | '['}${string}`
+export type RedisStyleRangeString = `${'(' | '['}${number}`
+export type RedisStyleRangeStringWithLex =
+  | RedisStyleRangeString
+  | '-inf'
+  | '+inf'
 
 export enum ObjectType {
   HASH = 'hash',
