@@ -27,7 +27,7 @@ export const TypedObject = (
       type: 'simple-enum',
     })
     @Check(`"type" = '${type}'`)
-    type: ObjectType
+    type: ObjectType = type
 
     @OneToOne(() => DbObject, {
       nullable: false,
