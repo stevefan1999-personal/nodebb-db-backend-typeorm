@@ -31,9 +31,6 @@ export class DbObject {
   })
   type: ObjectType
 
-  @Column({ nullable: false, type: 'simple-json' })
-  data: any
-
   @Column()
   @Index('idx__legacy_object__expireAt')
   expireAt?: Date
