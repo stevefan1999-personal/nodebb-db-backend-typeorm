@@ -169,16 +169,17 @@ export class TypeORMDatabaseBackend
   async exists(key: unknown): Promise<boolean | boolean[]> {
     const repo = this.dataSource?.getRepository(DbObjectLive)
     if (Array.isArray(key)) {
-      const data = new Set(
-        (
-          (await repo
-            ?.createQueryBuilder()
-            .select('_key')
-            .where({ _key: Any(key) })
-            .getRawMany()) ?? []
-        ).map(({ _key }) => _key),
+      return _.chain(
+        await repo
+          ?.createQueryBuilder('o')
+          .where({ key: Any(key) })
+          .select('o.key')
+          .getMany(),
       )
-      return key.map(data.has)
+        .keyBy('key')
+        .mapValues(() => true)
+        .thru((data) => key.map((x) => data[x] ?? false))
+        .value()
     } else if (typeof key === 'string') {
       return ((await repo?.findAndCountBy({ _key: key })) ?? 0) > 0
     }
@@ -186,16 +187,18 @@ export class TypeORMDatabaseBackend
   }
 
   async scan({ match }: { match: RedisStyleMatchString }): Promise<string[]> {
-    const [query, hasWildcard] =
-      Utils.convertRedisStyleMatchToSqlWildCard(match)
-    return (
-      (await this.dataSource
+    return _.chain(
+      await this.dataSource
         ?.getRepository(DbObjectLive)
-        ?.createQueryBuilder()
-        .select('_key')
-        .where({ _key: hasWildcard ? Like(query) : query })
-        .getRawMany()) ?? []
-    ).map(({ _key }: { _key: string }) => _key)
+        ?.createQueryBuilder('s')
+        .where({
+          key: Like(Utils.convertRedisStyleMatchToSqlWildCard(match)[0]),
+        })
+        .select('s.key')
+        .getMany(),
+    )
+      .map('key')
+      .value()
   }
 
   async delete(key: string): Promise<void> {
@@ -354,21 +357,31 @@ export class TypeORMDatabaseBackend
       ).map(({ member }) => member),
     )
 
-    return member.map(memberSet.has)
+  async isSetMembers(key: string, members: string[]): Promise<boolean[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+        ?.where({ key, member: Any(members) })
+        .select('s.member')
+        .getMany(),
+    )
+      .keyBy('member')
+      .mapValues(() => true)
+      .thru((data) => members.map((member) => data[member] ?? false))
+      .value()
   }
 
   async isMemberOfSets(sets: string[], member: string): Promise<boolean[]> {
-    const data = new Set(
-      (
-        (await this.dataSource
-          ?.getRepository(HashSetObject)
-          ?.createQueryBuilder()
-          .where({ _key: Any(sets), member })
-          .innerJoinAndMapMany('_key', DbObjectLive, 'l')
-          .getRawMany()) ?? []
-      ).map(({ _key }) => _key),
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+        ?.where({ key: Any(sets), member })
+        .select('s.key')
+        .getMany(),
     )
-    return sets.map(data.has)
+      .uniq()
+      .keyBy('key')
+      .mapValues(() => true)
+      .thru((data) => sets.map((set) => data[set] ?? false))
+      .value()
   }
 
   async getSetMembers(key: string): Promise<string[]> {
@@ -395,22 +408,19 @@ export class TypeORMDatabaseBackend
     )
   }
 
-  async setCount(key: string): Promise<number> {
-    return (
-      (await this.dataSource
-        ?.getRepository(HashSetObject)
-        ?.createQueryBuilder()
-        .where({ _key: key })
-        .select('member')
-        .innerJoin(DbObjectLive, 'l')
-        .getCount()) ?? 0
+  async setsCount(keys: string[]): Promise<number[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's', 'l')
+        .where({ key: Any(keys) })
+        .groupBy('l.key')
+        .select('s.key')
+        .addSelect('COUNT(*)', 'count')
+        .getRawMany<{ key: string; count: number }>(),
     )
-  }
-
-  setsCount(keys: string[]): Promise<number[]> {
-    return this.dataSource?.transaction(() =>
-      Promise.all(keys.map(this.setCount)),
-    )
+      .keyBy('key')
+      .mapValues('count')
+      .thru((data) => keys.map((key) => data[key] ?? 0))
+      .value()
   }
 
   setRemoveRandom(key: string): Promise<string> {
