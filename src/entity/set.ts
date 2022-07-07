@@ -14,10 +14,7 @@ export class HashSetObject extends TypedObject(
   ObjectType.SET,
   'fk__legacy_set__key',
 ) {
-  @Column({
-    nullable: false,
-    primary: true,
-  })
+  @PrimaryColumn()
   member: string
 }
 

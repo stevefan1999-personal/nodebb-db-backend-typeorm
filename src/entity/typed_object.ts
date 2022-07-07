@@ -16,13 +16,12 @@ export const TypedObject = (
   class TypedObjectInner extends BaseEntity {
     static TYPE = type
 
-    @PrimaryColumn({ nullable: false })
-    _key: string
+    @PrimaryColumn({ name: '_key' })
+    key: string
 
     @Column({
       default: type,
       enum: ObjectType,
-      nullable: false,
       type: 'simple-enum',
     })
     @Check(`"type" = '${type}'`)
@@ -38,7 +37,7 @@ export const TypedObject = (
       {
         foreignKeyConstraintName,
         name: '_key',
-        referencedColumnName: '_key',
+        referencedColumnName: 'key',
       },
       {
         foreignKeyConstraintName,

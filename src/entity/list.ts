@@ -14,7 +14,7 @@ export class ListObject extends TypedObject(
   ObjectType.LIST,
   'fk__legacy_list__key',
 ) {
-  @Column({ nullable: false, type: 'simple-json' })
+  @Column({ type: 'simple-json' })
   array: any[]
 }
 

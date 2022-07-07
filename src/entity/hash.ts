@@ -14,7 +14,7 @@ export class HashObject extends TypedObject(
   ObjectType.HASH,
   'fk__legacy_hash__key',
 ) {
-  @Column({ nullable: false, type: 'simple-json' })
+  @Column({ type: 'simple-json' })
   data: { [key: string]: any }
 }
 

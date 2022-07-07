@@ -4,7 +4,6 @@ import {
   Index,
   IsNull,
   PrimaryColumn,
-  Unique,
   ViewEntity,
 } from 'typeorm'
 
@@ -27,19 +26,17 @@ export enum ObjectType {
 }
 
 @Entity({ name: 'object' })
-@Unique(['_key', 'type'])
 export class DbObject {
-  @PrimaryColumn({ nullable: false })
-  _key: string
+  @PrimaryColumn({ name: '_key' })
+  key: string
 
-  @Column({
+  @PrimaryColumn({
     enum: ObjectType,
-    nullable: false,
     type: 'simple-enum',
   })
   type: ObjectType
 
-  @Column()
+  @Column({ nullable: true })
   @Index('idx__legacy_object__expireAt')
   expireAt?: Date
 
@@ -48,7 +45,7 @@ export class DbObject {
       throw new TypeError('not a hash object')
     }
     return entities.HashObject.findOneByOrFail({
-      _key: this._key,
+      key: this.key,
       type: this.type,
     })
   }
@@ -58,7 +55,7 @@ export class DbObject {
       throw new TypeError('not a list object')
     }
     return entities.ListObject.findOneByOrFail({
-      _key: this._key,
+      key: this.key,
       type: this.type,
     })
   }
@@ -68,7 +65,7 @@ export class DbObject {
       throw new TypeError('not a set object')
     }
     return entities.HashSetObject.findOneByOrFail({
-      _key: this._key,
+      key: this.key,
       type: this.type,
     })
   }
@@ -78,7 +75,7 @@ export class DbObject {
       throw new TypeError('not a string object')
     }
     return entities.StringObject.findOneByOrFail({
-      _key: this._key,
+      key: this.key,
       type: this.type,
     })
   }
@@ -88,7 +85,7 @@ export class DbObject {
       throw new TypeError('not a zset object')
     }
     return entities.SortedSetObject.findOneByOrFail({
-      _key: this._key,
+      key: this.key,
       type: this.type,
     })
   }

@@ -14,7 +14,7 @@ export class StringObject extends TypedObject(
   ObjectType.STRING,
   'fk__legacy_string__key',
 ) {
-  @Column({ nullable: false })
+  @Column()
   value: string
 }
 
