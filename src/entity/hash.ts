@@ -4,6 +4,7 @@ import {
   EntitySubscriberInterface,
   EventSubscriber,
   InsertEvent,
+  PrimaryColumn,
 } from 'typeorm'
 
 import { DbObject, ObjectType } from './object'
@@ -14,8 +15,11 @@ export class HashObject extends TypedObject(
   ObjectType.HASH,
   'fk__legacy_hash__key',
 ) {
+  @PrimaryColumn()
+  hashKey: string
+
   @Column({ type: 'simple-json' })
-  data: { [key: string]: any }
+  value: object
 }
 
 @EventSubscriber()
