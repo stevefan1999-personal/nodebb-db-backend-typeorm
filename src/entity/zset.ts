@@ -33,9 +33,15 @@ export class SortedSetObjectSubscriber
   }
 
   async beforeInsert(event: InsertEvent<SortedSetObject>): Promise<void> {
-    await event.manager.getRepository(DbObject).save({
-      key: event.entity.key,
-      type: event.entity.type,
-    })
+    await event.manager
+      .getRepository(DbObject)
+      .createQueryBuilder()
+      .insert()
+      .orUpdate(['type'], ['_key', 'type'])
+      .values({
+        key: event.entity.key,
+        type: event.entity.type,
+      })
+      .execute()
   }
 }
