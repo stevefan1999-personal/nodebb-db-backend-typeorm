@@ -429,7 +429,7 @@ export class TypeORMDatabaseBackend
         .orderBy('RANDOM()')
         .getOne()
       if (victim) {
-        await repo.delete(_.pick(victim, ['_key', 'member']))
+        await repo.delete(_.pick(victim, ['key', 'member']))
       }
       return victim?.member
     })
