@@ -184,7 +184,7 @@ export class TypeORMDatabaseBackend
         .thru((data) => key.map((x) => data[x] ?? false))
         .value()
     } else if (typeof key === 'string') {
-      return ((await repo?.findAndCountBy({ _key: key })) ?? 0) > 0
+      return ((await repo?.countBy({ key })) ?? 0) > 0
     }
     throw new Error('unexepected type')
   }
