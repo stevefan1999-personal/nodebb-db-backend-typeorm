@@ -30,7 +30,7 @@ import {
 } from './entity'
 import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
-import { Utils } from './utils'
+import { convertRedisStyleMatchToSqlWildCard } from './utils'
 
 const logger = winston.createLogger({
   format: winston.format.cli(),
@@ -204,7 +204,7 @@ export class TypeORMDatabaseBackend
         ?.getRepository(DbObjectLive)
         ?.createQueryBuilder('s')
         .where({
-          key: Like(Utils.convertRedisStyleMatchToSqlWildCard(match)[0]),
+          key: Like(convertRedisStyleMatchToSqlWildCard(match)[0]),
         })
         .select('s.key')
         .getMany(),
