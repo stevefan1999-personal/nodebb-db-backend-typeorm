@@ -1,6 +1,12 @@
-import { Column, Entity } from 'typeorm'
+import {
+  Column,
+  Entity,
+  EntitySubscriberInterface,
+  EventSubscriber,
+  InsertEvent,
+} from 'typeorm'
 
-import { ObjectType } from './object'
+import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.STRING })
@@ -10,4 +16,20 @@ export class StringObject extends TypedObject(
 ) {
   @Column({ nullable: false })
   value: string
+}
+
+@EventSubscriber()
+export class StringObjectSubscriber
+  implements EntitySubscriberInterface<StringObject>
+{
+  listenTo(): any {
+    return StringObject
+  }
+
+  async beforeInsert(event: InsertEvent<StringObject>): Promise<void> {
+    await event.manager.getRepository(DbObject).save({
+      key: event.entity.key,
+      type: event.entity.type,
+    })
+  }
 }

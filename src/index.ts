@@ -22,7 +22,13 @@ import {
   StringQueryable,
 } from '../types'
 
-import { DbObject, entities, HashSetObject, StringObject } from './entity'
+import {
+  DbObject,
+  entities,
+  HashSetObject,
+  StringObject,
+  subscribers,
+} from './entity'
 import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
 import { Utils } from './utils'

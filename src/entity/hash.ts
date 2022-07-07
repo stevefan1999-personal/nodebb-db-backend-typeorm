@@ -1,6 +1,12 @@
-import { Column, Entity } from 'typeorm'
+import {
+  Column,
+  Entity,
+  EntitySubscriberInterface,
+  EventSubscriber,
+  InsertEvent,
+} from 'typeorm'
 
-import { ObjectType } from './object'
+import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.HASH })
@@ -10,4 +16,20 @@ export class HashObject extends TypedObject(
 ) {
   @Column({ nullable: false, type: 'simple-json' })
   data: { [key: string]: any }
+}
+
+@EventSubscriber()
+export class HashObjectSubscriber
+  implements EntitySubscriberInterface<HashObject>
+{
+  listenTo(): any {
+    return HashObject
+  }
+
+  async beforeInsert(event: InsertEvent<HashObject>): Promise<void> {
+    await event.manager.getRepository(DbObject).save({
+      key: event.entity.key,
+      type: event.entity.type,
+    })
+  }
 }

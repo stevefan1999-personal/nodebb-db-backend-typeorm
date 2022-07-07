@@ -1,6 +1,12 @@
-import { Column, Entity } from 'typeorm'
+import {
+  Entity,
+  EntitySubscriberInterface,
+  EventSubscriber,
+  InsertEvent,
+  PrimaryColumn,
+} from 'typeorm'
 
-import { ObjectType } from './object'
+import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.SET })
@@ -13,4 +19,20 @@ export class HashSetObject extends TypedObject(
     primary: true,
   })
   member: string
+}
+
+@EventSubscriber()
+export class HashSetObjectSubscriber
+  implements EntitySubscriberInterface<HashSetObject>
+{
+  listenTo(): any {
+    return HashSetObject
+  }
+
+  async beforeInsert(event: InsertEvent<HashSetObject>): Promise<void> {
+    await event.manager.getRepository(DbObject).save({
+      key: event.entity.key,
+      type: event.entity.type,
+    })
+  }
 }
