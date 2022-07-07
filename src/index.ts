@@ -403,10 +403,17 @@ export class TypeORMDatabaseBackend
       .getCount()
   }
 
-  getSetsMembers(keys: string[]): Promise<string[][]> {
-    return this.dataSource?.transaction(() =>
-      Promise.all(keys.map(this.getSetMembers)),
+  async getSetsMembers(keys: string[]): Promise<string[][]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+        ?.where({ key: In(keys) })
+        .select(['s.key', 's.member'])
+        .getMany(),
     )
+      .groupBy('key')
+      .mapValues((x) => _.map(x, 'member'))
+      .thru((data) => keys.map((key) => data[key] ?? []))
+      .value()
   }
 
   async setsCount(keys: string[]): Promise<number[]> {
