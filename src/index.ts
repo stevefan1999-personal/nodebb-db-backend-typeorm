@@ -454,5 +454,28 @@ export class TypeORMDatabaseBackend
 }
 
 void (async function main(): Promise<void> {
-  console.log('foo')
+  nconf.defaults({
+    typeorm: {
+      database: './store.db',
+      type: 'sqlite',
+    },
+  })
+
+  const db = new TypeORMDatabaseBackend()
+  await db.init()
+  await db.flushdb()
+  logger.info(`set: ${await db.set('test', '3456')}`)
+  logger.info(`exists: ${await db.exists('test')}`)
+  logger.info(`get: ${await db.get('test')}`)
+  logger.info(`scan: ${await db.scan({ match: 'test' })}`)
+  logger.info(`delete: ${await db.delete('test')}`)
+  logger.info(`increment: ${await db.increment('test')}`)
+  logger.info(`rename: ${await db.rename('test', 'test1')}`)
+  logger.info(`exists: ${await db.exists('test')}`)
+  logger.info(`setAdd: ${await db.setAdd('test', '1234')}`)
+  logger.info(`setAdd: ${await db.setAdd('test', ['5678', 'abcd'])}`)
+  logger.info(`exists: ${await db.exists(['test', 'test1'])}`)
+  logger.info(`setCount: ${await db.setCount('test')}`)
+  logger.info(`getSetMembers: ${await db.getSetMembers('test')}`)
+  logger.info(`isSetMembers: ${await db.isSetMember('test', '1234')}`)
 })()
