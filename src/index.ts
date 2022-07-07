@@ -215,7 +215,7 @@ export class TypeORMDatabaseBackend
   }
 
   async delete(key: string): Promise<void> {
-    await this.dataSource?.getRepository(DbObject)?.delete({ _key: key })
+    await this.dataSource?.getRepository(DbObject)?.delete({ key })
   }
 
   async deleteAll(keys: string[]): Promise<void> {
@@ -232,25 +232,25 @@ export class TypeORMDatabaseBackend
 
   async set(key: string, value: string): Promise<void> {
     const obj = new StringObject()
-    obj._key = key
+    obj.key = key
     obj.value = value
     await this.dataSource?.getRepository(StringObject)?.save(obj)
   }
 
   async increment(key: string): Promise<number> {
     const repo = this.dataSource?.getRepository(StringObject)
-    const data = await repo?.findOneBy({ _key: key })
+    const data = await repo?.findOneBy({ key })
     if (data) {
       let value = Number.parseInt(data.value)
       if (value != null) {
         value += 1
         data.value = `${value}`
       }
-      await repo.update({ _key: key }, data)
+      await repo.update({ key }, data)
       return value
     } else {
       const obj = new StringObject()
-      obj._key = key
+      obj.key = key
       obj.value = '1'
       await repo.insert(obj)
       return 1
