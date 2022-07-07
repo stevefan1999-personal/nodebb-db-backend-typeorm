@@ -68,6 +68,7 @@ module.exports = {
       },
     ],
     'node/no-unsupported-features/es-syntax': 'off',
+    'object-shorthand': ['warn'],
     'sort-keys/sort-keys-fix': [
       'warn',
       'asc',
