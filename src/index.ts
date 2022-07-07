@@ -31,7 +31,7 @@ const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
   }
 
 export class TypeORMDatabaseBackend
-  implements INodeBBDatabaseBackend, StringQueryable
+  implements INodeBBDatabaseBackend, StringQueryable, HashSetQueryable
 {
   #dataSource?: DataSource = null
 
@@ -285,6 +285,134 @@ export class TypeORMDatabaseBackend
 
   pttl(key: string): Promise<number> {
     return this.ttlInner(key, differenceInMilliseconds)
+  }
+
+  // Implement HashSetQueryable
+  async setAdd(key: string, member: string | string[]): Promise<void> {
+    if (Array.isArray(member)) {
+      for (const val of member) {
+        await this.setAdd(key, val)
+      }
+      return
+    }
+
+    const repo = this.dataSource?.getRepository(HashSetObject)
+    const data = new HashSetObject()
+    data._key = key
+    data.member = member
+    await repo?.save(data)
+  }
+
+  async setsAdd(keys: string[], member: string | string[]): Promise<void> {
+    for (const key of _.uniq(keys)) {
+      await this.setAdd(key, member)
+    }
+  }
+
+  async setRemove(
+    key: string | string[],
+    member: string | string[],
+  ): Promise<void> {
+    await this.dataSource?.getRepository(HashSetObject)?.delete({
+      _key: Array.isArray(key) ? Any(key) : key,
+      member: Array.isArray(member) ? Any(member) : member,
+    })
+  }
+
+  setsRemove(keys: string[], value: string): Promise<void> {
+    return this.setRemove(keys, value)
+  }
+
+  async isSetMember(key: string, member: string): Promise<boolean> {
+    return (
+      ((await this.dataSource
+        ?.getRepository(HashSetObject)
+        .createQueryBuilder()
+        .where({ _key: key, member })
+        .getCount()) ?? 0) > 0
+    )
+  }
+
+  async isSetMembers(key: string, member: string[]): Promise<boolean[]> {
+    const memberSet = new Set(
+      (
+        (await this.dataSource
+          ?.getRepository(HashSetObject)
+          .createQueryBuilder()
+          .select('_key')
+          .where({ _key: key, member: Any(member) })
+          .innerJoin(DbObjectLive, 'l')
+          .getRawMany()) ?? []
+      ).map(({ member }) => member),
+    )
+
+    return member.map(memberSet.has)
+  }
+
+  async isMemberOfSets(sets: string[], member: string): Promise<boolean[]> {
+    const data = new Set(
+      (
+        (await this.dataSource
+          ?.getRepository(HashSetObject)
+          ?.createQueryBuilder()
+          .where({ _key: Any(sets), member })
+          .innerJoinAndMapMany('_key', DbObjectLive, 'l')
+          .getRawMany()) ?? []
+      ).map(({ _key }) => _key),
+    )
+    return sets.map(data.has)
+  }
+
+  async getSetMembers(key: string): Promise<string[]> {
+    return (
+      (await this.dataSource
+        ?.getRepository(HashSetObject)
+        ?.createQueryBuilder()
+        .where({ _key: key })
+        .select('member')
+        .innerJoin(DbObjectLive, 'l')
+        .getRawMany()) ?? []
+    ).map(({ member }) => member)
+  }
+
+  getSetsMembers(keys: string[]): Promise<string[][]> {
+    return this.dataSource?.transaction(() =>
+      Promise.all(keys.map(this.getSetMembers)),
+    )
+  }
+
+  async setCount(key: string): Promise<number> {
+    return (
+      (await this.dataSource
+        ?.getRepository(HashSetObject)
+        ?.createQueryBuilder()
+        .where({ _key: key })
+        .select('member')
+        .innerJoin(DbObjectLive, 'l')
+        .getCount()) ?? 0
+    )
+  }
+
+  setsCount(keys: string[]): Promise<number[]> {
+    return this.dataSource?.transaction(() =>
+      Promise.all(keys.map(this.setCount)),
+    )
+  }
+
+  setRemoveRandom(key: string): Promise<string> {
+    return this.dataSource?.transaction(async (entityManager) => {
+      const repo = entityManager.getRepository(HashSetObject)
+      const victim = await repo
+        .createQueryBuilder()
+        .where({ _key: key })
+        .innerJoin(DbObjectLive, 'l')
+        .orderBy('RANDOM()')
+        .getOne()
+      if (victim) {
+        await repo.delete(_.pick(victim, ['_key', 'member']))
+      }
+      return victim?.member
+    })
   }
 }
 
