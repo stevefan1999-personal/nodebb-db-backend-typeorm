@@ -27,8 +27,7 @@ export const TypedObject = (
     @Check(`"type" = '${type}'`)
     type: ObjectType = type
 
-    @OneToOne(() => DbObject, {
-      nullable: false,
+    @ManyToOne(() => DbObject, {
       onDelete: 'CASCADE',
       onUpdate: 'CASCADE',
       orphanedRowAction: 'delete',
