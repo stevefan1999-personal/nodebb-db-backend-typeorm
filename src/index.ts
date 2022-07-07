@@ -328,9 +328,7 @@ export class TypeORMDatabaseBackend
   }
 
   async setsAdd(keys: string[], member: string | string[]): Promise<void> {
-    for (const key of _.uniq(keys)) {
-      await this.setAdd(key, member)
-    }
+    await Promise.all(_.uniq(keys).map((key) => this.setAdd(key, member)))
   }
 
   async setRemove(
