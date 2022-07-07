@@ -1,25 +1,25 @@
 export interface HashSetQueryable {
-  setAdd(key: string, value: string | string[]): Promise<void>
+  getSetMembers(key: string): Promise<string[]>
 
-  setsAdd(keys: string[], value: string | string[]): Promise<void>
+  getSetsMembers(keys: string[]): Promise<string[][]>
 
-  setRemove(key: string | string[], value: string | string[]): Promise<void>
-
-  setsRemove(keys: string[], value: string): Promise<void>
+  isMemberOfSets(sets: string[], value: string): Promise<boolean[]>
 
   isSetMember(key: string, value: string): Promise<boolean>
 
   isSetMembers(key: string, values: string[]): Promise<boolean[]>
 
-  isMemberOfSets(sets: string[], value: string): Promise<boolean[]>
-
-  getSetMembers(key: string): Promise<string[]>
-
-  getSetsMembers(keys: string[]): Promise<string[][]>
+  setAdd(key: string, value: string | string[]): Promise<void>
 
   setCount(key: string): Promise<number>
 
-  setsCount(keys: string[]): Promise<number[]>
+  setRemove(key: string | string[], value: string | string[]): Promise<void>
 
   setRemoveRandom(key: string): Promise<string>
+
+  setsAdd(keys: string[], value: string | string[]): Promise<void>
+
+  setsCount(keys: string[]): Promise<number[]>
+
+  setsRemove(keys: string[], value: string): Promise<void>
 }

@@ -258,7 +258,16 @@ export class TypeORMDatabaseBackend
   async expireInner(key: string, expireAt: Date): Promise<void> {
     await this.dataSource
       ?.getRepository(DbObject)
-      ?.update({ _key: key }, { expireAt })
+      ?.update({ key }, { expireAt })
+  }
+
+  async ttlInner(
+    key: string,
+    comparator: (a: Date, b: Date) => number,
+  ): Promise<number> {
+    const { expireAt } =
+      (await this.dataSource?.getRepository(DbObject).findOneBy({ key })) ?? {}
+    return expireAt ? comparator(expireAt, new Date()) : -1
   }
 
   expire(key: string, seconds: number): Promise<void> {
@@ -280,19 +289,6 @@ export class TypeORMDatabaseBackend
     return this.expireInner(key, new Date(timestampInMs))
   }
 
-  async ttlInner(
-    key: string,
-    comparator: (a: Date, b: Date) => number,
-  ): Promise<number> {
-    const data = await this.dataSource
-      ?.getRepository(DbObject)
-      .findOneBy({ _key: key })
-    if (data?.expireAt != null) {
-      return comparator(data.expireAt, new Date())
-    }
-    return -1
-  }
-
   ttl(key: string): Promise<number> {
     return this.ttlInner(key, differenceInSeconds)
   }
@@ -303,18 +299,20 @@ export class TypeORMDatabaseBackend
 
   // Implement HashSetQueryable
   async setAdd(key: string, member: string | string[]): Promise<void> {
-    if (Array.isArray(member)) {
-      for (const val of member) {
-        await this.setAdd(key, val)
-      }
-      return
-    }
-
-    const repo = this.dataSource?.getRepository(HashSetObject)
-    const data = new HashSetObject()
-    data._key = key
-    data.member = member
-    await repo?.save(data)
+    await this.dataSource
+      ?.getRepository(HashSetObject)
+      .createQueryBuilder()
+      .insert()
+      .orIgnore()
+      .values(
+        (!Array.isArray(member) ? [member] : member).map((member) => {
+          const data = new HashSetObject()
+          data.key = key
+          data.member = member
+          return data
+        }),
+      )
+      .execute()
   }
 
   async setsAdd(keys: string[], member: string | string[]): Promise<void> {
@@ -344,19 +342,6 @@ export class TypeORMDatabaseBackend
         .getCount()) ?? 0) > 0
     )
   }
-
-  async isSetMembers(key: string, member: string[]): Promise<boolean[]> {
-    const memberSet = new Set(
-      (
-        (await this.dataSource
-          ?.getRepository(HashSetObject)
-          .createQueryBuilder()
-          .select('_key')
-          .where({ _key: key, member: Any(member) })
-          .innerJoin(DbObjectLive, 'l')
-          .getRawMany()) ?? []
-      ).map(({ member }) => member),
-    )
 
   async isSetMembers(key: string, members: string[]): Promise<boolean[]> {
     return _.chain(

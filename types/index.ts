@@ -7,12 +7,6 @@ export { StringQueryable } from './string'
 export { SortedSetQueryable } from './zset'
 
 export interface INodeBBDatabaseBackend {
-  init(): Promise<void>
-
-  createSessionStore(options: any): Promise<Store>
-
-  createIndices(callback: () => void): Promise<void>
-
   checkCompatibility(callback: () => void): Promise<void>
 
   checkCompatibilityVersion(
@@ -20,13 +14,19 @@ export interface INodeBBDatabaseBackend {
     callback: () => void,
   ): Promise<void>
 
-  info(db: any): Promise<any>
-
   close(): Promise<void>
+
+  createIndices(callback: () => void): Promise<void>
+
+  createSessionStore(options: any): Promise<Store>
+
+  emptydb(): Promise<void>
 
   flushdb(): Promise<void>
 
-  emptydb(): Promise<void>
+  info(db: any): Promise<any>
+
+  init(): Promise<void>
 }
 
 export type RedisStyleMatchString =
