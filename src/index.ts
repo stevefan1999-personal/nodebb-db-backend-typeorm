@@ -360,7 +360,9 @@ export class TypeORMDatabaseBackend
 
   async isSetMembers(key: string, members: string[]): Promise<boolean[]> {
     return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
+        baseAlias: 's',
+      })
         ?.where({ key, member: In(members) })
         .select('s.member')
         .getMany(),
@@ -373,7 +375,9 @@ export class TypeORMDatabaseBackend
 
   async isMemberOfSets(sets: string[], member: string): Promise<boolean[]> {
     return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
+        baseAlias: 's',
+      })
         ?.where({ key: In(sets), member })
         .select('s.key')
         .getMany(),
@@ -387,7 +391,9 @@ export class TypeORMDatabaseBackend
 
   async getSetMembers(key: string): Promise<string[]> {
     return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
+        baseAlias: 's',
+      })
         .where({ key })
         .select('s.member')
         .getMany(),
@@ -397,7 +403,9 @@ export class TypeORMDatabaseBackend
   }
 
   setCount(key: string): Promise<number> {
-    return this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+    return this.getQueryBuildByClassWithLiveObject(HashSetObject, {
+      baseAlias: 's',
+    })
       .where({ key })
       .select('s.member')
       .getCount()
@@ -405,7 +413,9 @@ export class TypeORMDatabaseBackend
 
   async getSetsMembers(keys: string[]): Promise<string[][]> {
     return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
+        baseAlias: 's',
+      })
         ?.where({ key: In(keys) })
         .select(['s.key', 's.member'])
         .getMany(),
@@ -418,7 +428,10 @@ export class TypeORMDatabaseBackend
 
   async setsCount(keys: string[]): Promise<number[]> {
     return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's', 'l')
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
+        baseAlias: 's',
+        liveObjectAlias: 'l',
+      })
         .where({ key: In(keys) })
         .groupBy('l.key')
         .select('s.key')
@@ -449,10 +462,13 @@ export class TypeORMDatabaseBackend
 
   private getQueryBuildByClassWithLiveObject<T>(
     klass: { new (): T },
-    baseAlias = 's',
-    liveObjectAlias = 'l',
+    {
+      baseAlias = 's',
+      liveObjectAlias = 'l',
+      em = this.dataSource?.manager,
+    } = {},
   ): SelectQueryBuilder<T> | null {
-    return this.dataSource
+    return em
       ?.getRepository(klass)
       .createQueryBuilder(baseAlias)
       .innerJoin(
