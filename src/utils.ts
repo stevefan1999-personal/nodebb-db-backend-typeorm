@@ -31,3 +31,10 @@ export function convertRedisStyleRangeStringToTypeormCriterion(
   }
   return MoreThanOrEqual(Number(input))
 }
+
+export const cartesianProduct = <T>(...sets: T[][]): T[][] =>
+  sets.reduce<T[][]>(
+    (accSets, set) =>
+      accSets.flatMap((accSet) => set.map((value) => [...accSet, value])),
+    [[]],
+  )
