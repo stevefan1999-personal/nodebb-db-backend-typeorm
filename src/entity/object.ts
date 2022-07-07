@@ -101,4 +101,13 @@ export class DbObject {
       .orWhere('object.expireAt > CURRENT_TIMESTAMP')
   },
 })
-export class DbObjectLive extends DbObject {}
+export class DbObjectLive {
+  @PrimaryColumn({ name: '_key' })
+  key: string
+
+  @PrimaryColumn({
+    enum: ObjectType,
+    type: 'simple-enum',
+  })
+  type: ObjectType
+}
