@@ -3,7 +3,13 @@ import { differenceInMilliseconds, differenceInSeconds } from 'date-fns/fp'
 import { Store } from 'express-session'
 import * as _ from 'lodash'
 import * as nconf from 'nconf'
-import { Any, DataSource, DataSourceOptions, Like } from 'typeorm'
+import {
+  In,
+  DataSource,
+  DataSourceOptions,
+  Like,
+  SelectQueryBuilder,
+} from 'typeorm'
 import { WinstonAdaptor } from 'typeorm-logger-adaptor/logger/winston'
 import * as winston from 'winston'
 import { Logger } from 'winston'
@@ -169,7 +175,7 @@ export class TypeORMDatabaseBackend
       return _.chain(
         await repo
           ?.createQueryBuilder('o')
-          .where({ key: Any(key) })
+          .where({ key: In(key) })
           .select('o.key')
           .getMany(),
       )
@@ -207,7 +213,7 @@ export class TypeORMDatabaseBackend
   }
 
   async deleteAll(keys: string[]): Promise<void> {
-    await this.dataSource?.getRepository(DbObject)?.delete({ _key: Any(keys) })
+    await this.dataSource?.getRepository(DbObject)?.delete({ key: In(keys) })
   }
 
   async get(key: string): Promise<string | null> {
@@ -326,8 +332,8 @@ export class TypeORMDatabaseBackend
     member: string | string[],
   ): Promise<void> {
     await this.dataSource?.getRepository(HashSetObject)?.delete({
-      _key: Array.isArray(key) ? Any(key) : key,
-      member: Array.isArray(member) ? Any(member) : member,
+      key: Array.isArray(key) ? In(key) : key,
+      member: Array.isArray(member) ? In(member) : member,
     })
   }
 
@@ -346,7 +352,7 @@ export class TypeORMDatabaseBackend
   async isSetMembers(key: string, members: string[]): Promise<boolean[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
-        ?.where({ key, member: Any(members) })
+        ?.where({ key, member: In(members) })
         .select('s.member')
         .getMany(),
     )
@@ -359,7 +365,7 @@ export class TypeORMDatabaseBackend
   async isMemberOfSets(sets: string[], member: string): Promise<boolean[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
-        ?.where({ key: Any(sets), member })
+        ?.where({ key: In(sets), member })
         .select('s.key')
         .getMany(),
     )
@@ -397,7 +403,7 @@ export class TypeORMDatabaseBackend
   async setsCount(keys: string[]): Promise<number[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's', 'l')
-        .where({ key: Any(keys) })
+        .where({ key: In(keys) })
         .groupBy('l.key')
         .select('s.key')
         .addSelect('COUNT(*)', 'count')
