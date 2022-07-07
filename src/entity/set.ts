@@ -8,6 +8,9 @@ export class HashSetObject extends TypedObject(
   ObjectType.SET,
   'fk__legacy_set__key',
 ) {
-  @Column({ nullable: false, primary: true, type: 'simple-json' })
-  member: Set<string>
+  @Column({
+    nullable: false,
+    primary: true,
+  })
+  member: string
 }
