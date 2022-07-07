@@ -161,18 +161,20 @@ export class TypeORMDatabaseBackend
   async exists(key: string): Promise<boolean>
   async exists(key: string[]): Promise<boolean[]>
   async exists(key: unknown): Promise<boolean | boolean[]> {
-    const repo = this.dataSource?.getRepository(StringObject)
+    const repo = this.dataSource?.getRepository(DbObjectLive)
     if (Array.isArray(key)) {
-      const data = (
-        (await repo
-          ?.createQueryBuilder()
-          .select('_key')
-          .where({ _key: Any(key) })
-          .getRawMany()) ?? []
-      ).map(({ _key }) => _key)
-      return key.map((k) => !!data.find(k))
+      const data = new Set(
+        (
+          (await repo
+            ?.createQueryBuilder()
+            .select('_key')
+            .where({ _key: Any(key) })
+            .getRawMany()) ?? []
+        ).map(({ _key }) => _key),
+      )
+      return key.map(data.has)
     } else if (typeof key === 'string') {
-      return !!(await repo.findOneBy({ _key: key }))
+      return ((await repo?.findAndCountBy({ _key: key })) ?? 0) > 0
     }
     throw new Error('unexepected type')
   }
