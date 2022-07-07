@@ -21,6 +21,12 @@ import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
 import { Utils } from './utils'
 
+const logger = winston.createLogger({
+  format: winston.format.cli(),
+  level: 'debug',
+  transports: [new winston.transports.Console()],
+})
+
 const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
   {
     mysql: {
@@ -40,6 +46,25 @@ export class TypeORMDatabaseBackend
 
   get dataSource(): DataSource | null {
     return this.#dataSource?.isInitialized ? this.#dataSource : null
+  }
+
+  async init(): Promise<void> {
+    const conf = TypeORMDatabaseBackend.getConnectionOptions()
+    try {
+      this.#dataSource = await new DataSource({
+        ...conf,
+        entities,
+        logger: new WinstonAdaptor(logger, 'all'),
+        subscribers,
+      }).initialize()
+    } catch (err) {
+      if (err instanceof Error) {
+        winston.error(
+          `NodeBB could not manifest a connection (for data store) with your specified TypeORM config with the following error: ${err.message}`,
+        )
+      }
+      throw err
+    }
   }
 
   static getConnectionOptions(
@@ -84,32 +109,13 @@ export class TypeORMDatabaseBackend
     return _.merge(connOptions, typeorm.options || {})
   }
 
-  async init(): Promise<void> {
-    const conf = TypeORMDatabaseBackend.getConnectionOptions()
-    try {
-      this.#dataSource = await new DataSource({
-        ...conf,
-        entities,
-        logger: new WinstonAdaptor(winston as unknown as Logger, 'all'),
-      }).initialize()
-      await this.dataSource?.synchronize()
-    } catch (err) {
-      if (err instanceof Error) {
-        winston.error(
-          `NodeBB could not manifest a connection (for data store) with your specified TypeORM config with the following error: ${err.message}`,
-        )
-      }
-      throw err
-    }
-  }
-
   async createSessionStore(options: any): Promise<Store> {
     const conf = TypeORMDatabaseBackend.getConnectionOptions(options)
     try {
       const dataSource = await new DataSource({
         ...conf,
         entities: [(await import('./session/entity/session')).Session],
-        logger: new WinstonAdaptor(winston as unknown as Logger, 'all'),
+        logger: new WinstonAdaptor(logger, 'all'),
       }).initialize()
       await dataSource.synchronize()
       return new SessionStore(dataSource)
