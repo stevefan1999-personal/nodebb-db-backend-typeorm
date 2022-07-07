@@ -2,7 +2,7 @@ import { Store } from 'express-session'
 
 export { HashQueryable } from './hash'
 export { ListQueryable } from './list'
-export { SetQueryable } from './set'
+export { HashSetQueryable } from './set'
 export { StringQueryable } from './string'
 export { SortedSetQueryable } from './zset'
 

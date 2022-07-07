@@ -1,9 +1,9 @@
-export interface SetQueryable {
-  setAdd(key: string, value: string): Promise<void>
+export interface HashSetQueryable {
+  setAdd(key: string, value: string | string[]): Promise<void>
 
-  setsAdd(keys: string[], value: string): Promise<void>
+  setsAdd(keys: string[], value: string | string[]): Promise<void>
 
-  setRemove(key: string[], value: string): Promise<void>
+  setRemove(key: string | string[], value: string | string[]): Promise<void>
 
   setsRemove(keys: string[], value: string): Promise<void>
 
@@ -15,7 +15,7 @@ export interface SetQueryable {
 
   getSetMembers(key: string): Promise<string[]>
 
-  getSetsMembers(keys: string[]): Promise<string[]>
+  getSetsMembers(keys: string[]): Promise<string[][]>
 
   setCount(key: string): Promise<number>
 
