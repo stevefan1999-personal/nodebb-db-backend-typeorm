@@ -16,6 +16,7 @@ import * as winston from 'winston'
 import {
   HashSetQueryable,
   INodeBBDatabaseBackend,
+  ListQueryable,
   ObjectType,
   RedisStyleMatchString,
   StringQueryable,
@@ -25,6 +26,7 @@ import {
   DbObject,
   entities,
   HashSetObject,
+  ListObject,
   StringObject,
   subscribers,
 } from './entity'
@@ -51,7 +53,11 @@ const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
   }
 
 export class TypeORMDatabaseBackend
-  implements INodeBBDatabaseBackend, StringQueryable, HashSetQueryable
+  implements
+    INodeBBDatabaseBackend,
+    StringQueryable,
+    HashSetQueryable,
+    ListQueryable
 {
   #dataSource?: DataSource = null
 
@@ -476,6 +482,96 @@ export class TypeORMDatabaseBackend
         liveObjectAlias,
         `${liveObjectAlias}.key = ${baseAlias}.key`,
       )
+  }
+
+  // Implement ListQueryable
+  listPrepend(key: string, value: string): Promise<void> {
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
+      const obj =
+        (await em.getRepository(ListObject).findOneBy({ key })) ??
+        _.thru(new ListObject(), (l) => {
+          l.key = key
+          return l
+        })
+      obj.array = [value, ...obj.array]
+      await obj.save()
+    })
+  }
+
+  listAppend(key: string, value: string): Promise<void> {
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
+      const obj =
+        (await em.getRepository(ListObject).findOneBy({ key })) ??
+        _.thru(new ListObject(), (l) => {
+          l.key = key
+          return l
+        })
+      obj.array = [...obj.array, value]
+      await obj.save()
+    })
+  }
+
+  listRemoveLast(key: string): Promise<any> {
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
+      const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
+        em,
+      })
+        .where({ key })
+        .getOneOrFail()
+      const ret = obj.array.pop()
+      await obj.save()
+      return ret
+    })
+  }
+
+  listRemoveAll(key: string, value: string | string[]): Promise<void> {
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
+      const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
+        em,
+      })
+        .where({ key })
+        .getOneOrFail()
+      obj.array = _.without(obj.array, value)
+      await obj.save()
+    })
+  }
+
+  listTrim(key: string, start: number, stop: number): Promise<void> {
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
+      const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
+        em,
+      })
+        .where({ key })
+        .getOneOrFail()
+      obj.array.splice(start, stop - start + (stop < 0 ? obj.array.length : 0))
+      await obj.save()
+    })
+  }
+
+  getListRange(key: string, start: number, stop: number): Promise<any[]> {
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) =>
+      (
+        await this.getQueryBuildByClassWithLiveObject(ListObject, {
+          em,
+        })
+          .where({ key })
+          .getOneOrFail()
+      ).array.slice(start, stop),
+    )
+  }
+
+  listLength(key: string): Promise<number> {
+    return this.dataSource?.transaction(
+      'SERIALIZABLE',
+      async (em) =>
+        (
+          await this.getQueryBuildByClassWithLiveObject(ListObject, {
+            em,
+          })
+            .where({ key })
+            .getOneOrFail()
+        ).array.length,
+    )
   }
 }
 
