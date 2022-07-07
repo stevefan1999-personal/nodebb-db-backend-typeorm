@@ -11,10 +11,7 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.HASH })
-export class HashObject extends TypedObject(
-  ObjectType.HASH,
-  'fk__legacy_hash__key',
-) {
+export class HashObject extends TypedObject(ObjectType.HASH) {
   @PrimaryColumn()
   hashKey: string
 

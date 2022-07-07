@@ -9,10 +9,7 @@ import {
 
 import { DbObject, ObjectType } from './object'
 
-export const TypedObject = (
-  type: ObjectType,
-  foreignKeyConstraintName: string,
-) => {
+export const TypedObject = (type: ObjectType) => {
   class TypedObjectInner extends BaseEntity {
     static TYPE = type
 
@@ -34,12 +31,10 @@ export const TypedObject = (
     })
     @JoinColumn([
       {
-        foreignKeyConstraintName,
         name: '_key',
         referencedColumnName: 'key',
       },
       {
-        foreignKeyConstraintName,
         name: 'type',
         referencedColumnName: 'type',
       },

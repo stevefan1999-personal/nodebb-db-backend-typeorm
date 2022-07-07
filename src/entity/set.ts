@@ -10,10 +10,7 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.SET })
-export class HashSetObject extends TypedObject(
-  ObjectType.SET,
-  'fk__legacy_set__key',
-) {
+export class HashSetObject extends TypedObject(ObjectType.SET) {
   @PrimaryColumn()
   member: string
 }

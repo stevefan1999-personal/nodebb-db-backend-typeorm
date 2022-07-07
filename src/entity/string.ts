@@ -10,10 +10,7 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.STRING })
-export class StringObject extends TypedObject(
-  ObjectType.STRING,
-  'fk__legacy_string__key',
-) {
+export class StringObject extends TypedObject(ObjectType.STRING) {
   @Column()
   value: string
 }
