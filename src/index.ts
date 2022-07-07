@@ -208,11 +208,8 @@ export class TypeORMDatabaseBackend
 
   async get(key: string): Promise<string | null> {
     return (
-      await this.dataSource
-        ?.getRepository(StringObject)
-        ?.createQueryBuilder()
-        .innerJoinAndMapOne('_key', DbObjectLive, 's')
-        .where({ _key: key })
+      await this.getQueryBuildByClassWithLiveObject(StringObject)
+        .where({ key })
         .getOne()
     )?.value
   }
@@ -338,10 +335,8 @@ export class TypeORMDatabaseBackend
 
   async isSetMember(key: string, member: string): Promise<boolean> {
     return (
-      ((await this.dataSource
-        ?.getRepository(HashSetObject)
-        .createQueryBuilder()
-        .where({ _key: key, member })
+      ((await this.getQueryBuildByClassWithLiveObject(HashSetObject)
+        ?.where({ key, member })
         .getCount()) ?? 0) > 0
     )
   }
@@ -377,15 +372,21 @@ export class TypeORMDatabaseBackend
   }
 
   async getSetMembers(key: string): Promise<string[]> {
-    return (
-      (await this.dataSource
-        ?.getRepository(HashSetObject)
-        ?.createQueryBuilder()
-        .where({ _key: key })
-        .select('member')
-        .innerJoin(DbObjectLive, 'l')
-        .getRawMany()) ?? []
-    ).map(({ member }) => member)
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+        .where({ key })
+        .select('s.member')
+        .getMany(),
+    )
+      .map('member')
+      .value()
+  }
+
+  setCount(key: string): Promise<number> {
+    return this.getQueryBuildByClassWithLiveObject(HashSetObject, 's')
+      .where({ key })
+      .select('s.member')
+      .getCount()
   }
 
   getSetsMembers(keys: string[]): Promise<string[][]> {
@@ -415,10 +416,10 @@ export class TypeORMDatabaseBackend
   setRemoveRandom(key: string): Promise<string> {
     return this.dataSource?.transaction(async (entityManager) => {
       const repo = entityManager.getRepository(HashSetObject)
-      const victim = await repo
-        .createQueryBuilder()
-        .where({ _key: key })
-        .innerJoin(DbObjectLive, 'l')
+      const victim = await this.getQueryBuildByClassWithLiveObject(
+        HashSetObject,
+      )
+        .where({ key })
         .orderBy('RANDOM()')
         .getOne()
       if (victim) {
@@ -426,6 +427,21 @@ export class TypeORMDatabaseBackend
       }
       return victim?.member
     })
+  }
+
+  private getQueryBuildByClassWithLiveObject<T>(
+    klass: { new (): T },
+    baseAlias = 's',
+    liveObjectAlias = 'l',
+  ): SelectQueryBuilder<T> | null {
+    return this.dataSource
+      ?.getRepository(klass)
+      .createQueryBuilder(baseAlias)
+      .innerJoin(
+        DbObjectLive,
+        liveObjectAlias,
+        `${liveObjectAlias}.key = ${baseAlias}.key`,
+      )
   }
 }
 
