@@ -258,9 +258,9 @@ export class TypeORMDatabaseBackend
   }
 
   async rename(oldkey: string, newkey: string): Promise<void> {
-    const repo = this.dataSource?.getRepository(StringObject)
-    await repo?.delete({ _key: newkey })
-    await repo?.update({ _key: oldkey }, { _key: newkey })
+    const repo = this.dataSource?.getRepository(DbObject)
+    await repo?.delete({ key: newkey })
+    await repo?.update({ key: oldkey }, { key: newkey })
   }
 
   type(key: string): Promise<ObjectType> {
