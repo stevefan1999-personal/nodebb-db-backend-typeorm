@@ -4,15 +4,14 @@ import { Store } from 'express-session'
 import * as _ from 'lodash'
 import * as nconf from 'nconf'
 import {
-  In,
   DataSource,
   DataSourceOptions,
+  In,
   Like,
   SelectQueryBuilder,
 } from 'typeorm'
 import { WinstonAdaptor } from 'typeorm-logger-adaptor/logger/winston'
 import * as winston from 'winston'
-import { Logger } from 'winston'
 
 import {
   HashSetQueryable,
@@ -60,25 +59,6 @@ export class TypeORMDatabaseBackend
     return this.#dataSource?.isInitialized ? this.#dataSource : null
   }
 
-  async init(): Promise<void> {
-    const conf = TypeORMDatabaseBackend.getConnectionOptions()
-    try {
-      this.#dataSource = await new DataSource({
-        ...conf,
-        entities,
-        logger: new WinstonAdaptor(logger, 'all'),
-        subscribers,
-      }).initialize()
-    } catch (err) {
-      if (err instanceof Error) {
-        winston.error(
-          `NodeBB could not manifest a connection (for data store) with your specified TypeORM config with the following error: ${err.message}`,
-        )
-      }
-      throw err
-    }
-  }
-
   static getConnectionOptions(
     typeorm: any = nconf.get('typeorm'),
   ): DataSourceOptions {
@@ -119,6 +99,25 @@ export class TypeORMDatabaseBackend
     }
 
     return _.merge(connOptions, typeorm.options || {})
+  }
+
+  async init(): Promise<void> {
+    const conf = TypeORMDatabaseBackend.getConnectionOptions()
+    try {
+      this.#dataSource = await new DataSource({
+        ...conf,
+        entities,
+        logger: new WinstonAdaptor(logger, 'all'),
+        subscribers,
+      }).initialize()
+    } catch (err) {
+      if (err instanceof Error) {
+        winston.error(
+          `NodeBB could not manifest a connection (for data store) with your specified TypeORM config with the following error: ${err.message}`,
+        )
+      }
+      throw err
+    }
   }
 
   async createSessionStore(options: any): Promise<Store> {
@@ -263,7 +262,7 @@ export class TypeORMDatabaseBackend
     await repo?.update({ key: oldkey }, { key: newkey })
   }
 
-  type(key: string): Promise<ObjectType> {
+  type(_key: string): Promise<ObjectType> {
     throw new Error('Method not implemented.')
   }
 
