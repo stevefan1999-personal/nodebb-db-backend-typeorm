@@ -30,7 +30,7 @@ import {
 } from './entity'
 import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
-import { convertRedisStyleMatchToSqlWildCard } from './utils'
+import { cartesianProduct, convertRedisStyleMatchToSqlWildCard } from './utils'
 
 const logger = winston.createLogger({
   format: winston.format.cli(),
@@ -309,14 +309,20 @@ export class TypeORMDatabaseBackend
   }
 
   // Implement HashSetQueryable
-  async setAdd(key: string, member: string | string[]): Promise<void> {
+  async setAdd(
+    key: string | string[],
+    member: string | string[],
+  ): Promise<void> {
     await this.dataSource
       ?.getRepository(HashSetObject)
       .createQueryBuilder()
       .insert()
       .orIgnore()
       .values(
-        (!Array.isArray(member) ? [member] : member).map((member) => {
+        cartesianProduct(
+          !Array.isArray(key) ? [key] : key,
+          !Array.isArray(member) ? [member] : member,
+        ).map(([key, member]) => {
           const data = new HashSetObject()
           data.key = key
           data.member = member
@@ -327,7 +333,7 @@ export class TypeORMDatabaseBackend
   }
 
   async setsAdd(keys: string[], member: string | string[]): Promise<void> {
-    await Promise.all(_.uniq(keys).map((key) => this.setAdd(key, member)))
+    return this.setAdd(keys, member)
   }
 
   async setRemove(
