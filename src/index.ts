@@ -129,6 +129,11 @@ export class TypeORMDatabaseBackend
     }
   }
 
+  async flushdb(): Promise<void> {
+    await this.dataSource?.dropDatabase()
+    await this.dataSource?.synchronize()
+  }
+
   async createIndices(callback: any): Promise<void> {
     await this.dataSource?.synchronize()
     callback()
@@ -155,14 +160,6 @@ export class TypeORMDatabaseBackend
     this.#dataSource = null
   }
 
-  async flushdb(): Promise<void> {
-    await this.dataSource?.dropDatabase()
-  }
-
-  async emptydb(): Promise<void> {
-    await this.dataSource?.getRepository(DbObject).delete({})
-  }
-
   // Implement StringQueryable
   async exists(key: string): Promise<boolean>
   async exists(key: string[]): Promise<boolean[]>
@@ -184,6 +181,10 @@ export class TypeORMDatabaseBackend
       return ((await repo?.findAndCountBy({ _key: key })) ?? 0) > 0
     }
     throw new Error('unexepected type')
+  }
+
+  async emptydb(): Promise<void> {
+    await this.dataSource?.getRepository(DbObject).delete({})
   }
 
   async scan({ match }: { match: RedisStyleMatchString }): Promise<string[]> {
