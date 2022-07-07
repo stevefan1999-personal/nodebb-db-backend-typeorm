@@ -202,13 +202,13 @@ export class TypeORMDatabaseBackend
 
   async get(key: string): Promise<string | null> {
     return (
-      (await this.dataSource
+      await this.dataSource
         ?.getRepository(StringObject)
         ?.createQueryBuilder()
-        .innerJoinAndSelect(DbObjectLive, 's')
+        .innerJoinAndMapOne('_key', DbObjectLive, 's')
         .where({ _key: key })
-        .getOne()) ?? { value: null }
-    ).value
+        .getOne()
+    )?.value
   }
 
   async set(key: string, value: string): Promise<void> {
