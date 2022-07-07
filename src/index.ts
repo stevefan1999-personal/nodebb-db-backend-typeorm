@@ -4,16 +4,19 @@ import { Store } from 'express-session'
 import * as _ from 'lodash'
 import * as nconf from 'nconf'
 import { Any, DataSource, DataSourceOptions, Like } from 'typeorm'
+import { WinstonAdaptor } from 'typeorm-logger-adaptor/logger/winston'
 import * as winston from 'winston'
+import { Logger } from 'winston'
 
 import {
+  HashSetQueryable,
   INodeBBDatabaseBackend,
   ObjectType,
   RedisStyleMatchString,
   StringQueryable,
 } from '../types'
 
-import { DbObject, entities, StringObject } from './entity'
+import { DbObject, entities, HashSetObject, StringObject } from './entity'
 import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
 import { Utils } from './utils'
@@ -87,6 +90,7 @@ export class TypeORMDatabaseBackend
       this.#dataSource = await new DataSource({
         ...conf,
         entities,
+        logger: new WinstonAdaptor(winston as unknown as Logger, 'all'),
       }).initialize()
       await this.dataSource?.synchronize()
     } catch (err) {
@@ -105,6 +109,7 @@ export class TypeORMDatabaseBackend
       const dataSource = await new DataSource({
         ...conf,
         entities: [(await import('./session/entity/session')).Session],
+        logger: new WinstonAdaptor(winston as unknown as Logger, 'all'),
       }).initialize()
       await dataSource.synchronize()
       return new SessionStore(dataSource)
