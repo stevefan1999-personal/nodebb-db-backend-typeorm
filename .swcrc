@@ -7,6 +7,11 @@
       "preserveAllComments": true,
       "syntax": "typescript"
     },
+    "paths": {
+      "~/*": [
+        "src/*"
+      ]
+    },
     "target": "es2019",
     "transform": {
       "decoratorMetadata": true,

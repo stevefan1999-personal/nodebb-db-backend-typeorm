@@ -23,6 +23,8 @@ module.exports = {
           },
         ],
         '@typescript-eslint/no-explicit-any': 'off',
+        'import/no-unresolved': 'error',
+        'node/no-missing-import': 'off',
       },
     },
   ],
@@ -53,7 +55,7 @@ module.exports = {
       },
     ],
     'node/no-missing-import': [
-      'error',
+      'warn',
       {
         tryExtensions: [
           '.cts',
@@ -77,4 +79,5 @@ module.exports = {
     ],
     'sort-vars': ['warn', { ignoreCase: true }],
   },
+  settings: { 'import/resolver': { typescript: { alwaysTryTypes: true } } },
 }

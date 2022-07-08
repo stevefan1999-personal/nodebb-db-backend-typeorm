@@ -1,7 +1,7 @@
 import 'jest-extended'
 import { suite, test } from '@testdeck/jest'
 
-import { TypeORMDatabaseBackend } from '../src'
+import { TypeORMDatabaseBackend } from '~/index'
 
 @suite
 export class TestSuite {
