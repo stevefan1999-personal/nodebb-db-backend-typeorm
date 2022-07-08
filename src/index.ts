@@ -114,6 +114,7 @@ export class TypeORMDatabaseBackend
     const conf = TypeORMDatabaseBackend.getConnectionOptions()
     try {
       this.#dataSource = await new DataSource({
+        cache: true,
         ...conf,
         entities,
         logger: new WinstonAdaptor(logger, 'all'),
@@ -133,6 +134,7 @@ export class TypeORMDatabaseBackend
     const conf = TypeORMDatabaseBackend.getConnectionOptions(options)
     try {
       const dataSource = await new DataSource({
+        cache: true,
         ...conf,
         entities: [(await import('./session/entity/session')).Session],
         logger: new WinstonAdaptor(logger, 'all'),
@@ -189,6 +191,7 @@ export class TypeORMDatabaseBackend
       return _.chain(
         await repo
           ?.createQueryBuilder('o')
+          .cache(true)
           .where({ key: In(key) })
           .select('o.key')
           .getMany(),
@@ -211,6 +214,7 @@ export class TypeORMDatabaseBackend
       await this.dataSource
         ?.getRepository(DbObjectLive)
         ?.createQueryBuilder('s')
+        .cache(true)
         .where({
           key: Like(convertRedisStyleMatchToSqlWildCard(match)[0]),
         })
@@ -246,7 +250,7 @@ export class TypeORMDatabaseBackend
 
   async increment(key: string): Promise<number> {
     const repo = this.dataSource?.getRepository(StringObject)
-    const data = await repo?.findOneBy({ key })
+    const data = await repo?.findOne({ cache: true, where: { key } })
     if (data) {
       let value = Number.parseInt(data.value)
       if (value != null) {
@@ -284,8 +288,11 @@ export class TypeORMDatabaseBackend
     key: string,
     comparator: (a: Date, b: Date) => number,
   ): Promise<number> {
-    const { expireAt } =
-      (await this.dataSource?.getRepository(DbObject).findOneBy({ key })) ?? {}
+    const expireAt = (
+      await this.dataSource
+        ?.getRepository(DbObject)
+        .findOne({ cache: true, where: { key } })
+    )?.expireAt
     return expireAt ? comparator(expireAt, new Date()) : -1
   }
 
@@ -477,6 +484,7 @@ export class TypeORMDatabaseBackend
     return em
       ?.getRepository(klass)
       .createQueryBuilder(baseAlias)
+      .cache(true)
       .innerJoin(
         DbObjectLive,
         liveObjectAlias,
@@ -488,7 +496,9 @@ export class TypeORMDatabaseBackend
   listPrepend(key: string, value: string): Promise<void> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj =
-        (await em.getRepository(ListObject).findOneBy({ key })) ??
+        (await em
+          .getRepository(ListObject)
+          .findOne({ cache: true, where: { key } })) ??
         _.thru(new ListObject(), (l) => {
           l.key = key
           return l
@@ -501,7 +511,9 @@ export class TypeORMDatabaseBackend
   listAppend(key: string, value: string): Promise<void> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj =
-        (await em.getRepository(ListObject).findOneBy({ key })) ??
+        (await em
+          .getRepository(ListObject)
+          .findOne({ cache: true, where: { key } })) ??
         _.thru(new ListObject(), (l) => {
           l.key = key
           return l
@@ -737,9 +749,12 @@ export class TypeORMDatabaseBackend
     incrValue: number,
   ): Promise<HashObject> {
     const data =
-      (await repo.findOneBy({
-        hashKey,
-        key,
+      (await repo.findOne({
+        cache: true,
+        where: {
+          hashKey,
+          key,
+        },
       })) ??
       _.thru(new HashObject(), (x) => {
         x.key = key
