@@ -539,15 +539,15 @@ export class TypeORMDatabaseBackend
   }
 
   getListRange(key: string, start: number, stop: number): Promise<any[]> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) =>
-      (
+    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
+      return (
         await this.getQueryBuildByClassWithLiveObject(ListObject, {
           em,
         })
           .where({ key })
           .getOneOrFail()
-      ).array.slice(start, stop),
-    )
+      ).array.slice(start, stop)
+    })
   }
 
   listLength(key: string): Promise<number> {
