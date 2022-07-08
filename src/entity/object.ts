@@ -27,8 +27,8 @@ export enum ObjectType {
 
 @Entity({ name: 'object' })
 export class DbObject {
-  @PrimaryColumn({ name: '_key' })
-  key: string
+  @PrimaryColumn()
+  id: string
 
   @PrimaryColumn({
     enum: ObjectType,
@@ -37,7 +37,7 @@ export class DbObject {
   type: ObjectType
 
   @Column({ nullable: true })
-  @Index('idx__legacy_object__expireAt')
+  @Index()
   expireAt?: Date
 
   async tryIntoHash(): Promise<HashObject> {
@@ -45,7 +45,7 @@ export class DbObject {
       throw new TypeError('not a hash object')
     }
     return entities.HashObject.findOneByOrFail({
-      key: this.key,
+      id: this.id,
       type: this.type,
     })
   }
@@ -55,7 +55,7 @@ export class DbObject {
       throw new TypeError('not a list object')
     }
     return entities.ListObject.findOneByOrFail({
-      key: this.key,
+      id: this.id,
       type: this.type,
     })
   }
@@ -65,7 +65,7 @@ export class DbObject {
       throw new TypeError('not a set object')
     }
     return entities.HashSetObject.findOneByOrFail({
-      key: this.key,
+      id: this.id,
       type: this.type,
     })
   }
@@ -75,7 +75,7 @@ export class DbObject {
       throw new TypeError('not a string object')
     }
     return entities.StringObject.findOneByOrFail({
-      key: this.key,
+      id: this.id,
       type: this.type,
     })
   }
@@ -85,7 +85,7 @@ export class DbObject {
       throw new TypeError('not a zset object')
     }
     return entities.SortedSetObject.findOneByOrFail({
-      key: this.key,
+      id: this.id,
       type: this.type,
     })
   }
@@ -95,15 +95,15 @@ export class DbObject {
   expression(conn) {
     return conn
       .getRepository(DbObject)
-      .createQueryBuilder('object')
-      .select(['_key', 'type'])
+      .createQueryBuilder('o')
+      .select(['id', 'type'])
       .where({ expireAt: IsNull() })
-      .orWhere('object.expireAt > CURRENT_TIMESTAMP')
+      .orWhere('o.expireAt > CURRENT_TIMESTAMP')
   },
 })
 export class DbObjectLive {
-  @PrimaryColumn({ name: '_key' })
-  key: string
+  @PrimaryColumn()
+  id: string
 
   @PrimaryColumn({
     enum: ObjectType,

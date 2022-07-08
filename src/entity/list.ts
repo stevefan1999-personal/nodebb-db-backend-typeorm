@@ -28,9 +28,9 @@ export class ListObjectSubscriber
       .getRepository(DbObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['type'], ['_key', 'type'])
+      .orUpdate(['type'], ['id', 'type'])
       .values({
-        key: event.entity.key,
+        id: event.entity.id,
         type: event.entity.type,
       })
       .execute()

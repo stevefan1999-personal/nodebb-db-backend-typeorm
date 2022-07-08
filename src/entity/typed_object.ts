@@ -13,8 +13,8 @@ export const TypedObject = (type: ObjectType) => {
   class TypedObjectInner extends BaseEntity {
     static TYPE = type
 
-    @PrimaryColumn({ name: '_key' })
-    key: string
+    @PrimaryColumn()
+    id: string
 
     @Column({
       default: type,
@@ -31,8 +31,8 @@ export const TypedObject = (type: ObjectType) => {
     })
     @JoinColumn([
       {
-        name: '_key',
-        referencedColumnName: 'key',
+        name: 'id',
+        referencedColumnName: 'id',
       },
       {
         name: 'type',

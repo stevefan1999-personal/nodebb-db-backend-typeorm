@@ -177,21 +177,21 @@ export class TypeORMDatabaseBackend
   // Implement StringQueryable
   async exists(key: string): Promise<boolean>
   async exists(key: string[]): Promise<boolean[]>
-  async exists(key: unknown): Promise<boolean | boolean[]> {
+  async exists(id: string | string[]): Promise<boolean | boolean[]> {
     const repo = this.dataSource?.getRepository(DbObjectLive)
-    if (Array.isArray(key)) {
+    if (Array.isArray(id)) {
       return _.chain(
         await repo
           ?.createQueryBuilder('o')
-          .where({ key: In(key) })
-          .select('o.key')
+          .where({ id: In(id) })
+          .select('o.id')
           .getMany(),
       )
-        .keyBy('key')
-        .thru((data) => key.map((x) => x in data))
+        .keyBy('id')
+        .thru((data) => id.map((x) => x in data))
         .value()
-    } else if (typeof key === 'string') {
-      return ((await repo?.countBy({ key })) ?? 0) > 0
+    } else if (typeof id === 'string') {
+      return ((await repo?.countBy({ id })) ?? 0) > 0
     }
     throw new Error('unexpected type')
   }
@@ -206,80 +206,78 @@ export class TypeORMDatabaseBackend
         ?.getRepository(DbObjectLive)
         ?.createQueryBuilder('s')
         .where({
-          key: Like(convertRedisStyleMatchToSqlWildCard(match)[0]),
+          id: Like(convertRedisStyleMatchToSqlWildCard(match)[0]),
         })
-        .select('s.key')
+        .select('s.id')
         .getMany(),
     )
-      .map('key')
+      .map('id')
       .value()
   }
 
-  async delete(key: string): Promise<void> {
-    await this.dataSource?.getRepository(DbObject)?.delete({ key })
+  async delete(id: string): Promise<void> {
+    await this.dataSource?.getRepository(DbObject)?.delete({ id })
   }
 
-  async deleteAll(keys: string[]): Promise<void> {
-    await this.dataSource?.getRepository(DbObject)?.delete({ key: In(keys) })
+  async deleteAll(ids: string[]): Promise<void> {
+    await this.dataSource?.getRepository(DbObject)?.delete({ id: In(ids) })
   }
 
-  async get(key: string): Promise<string | null> {
+  async get(id: string): Promise<string | null> {
     return (
       await this.getQueryBuildByClassWithLiveObject(StringObject)
-        .where({ key })
+        .where({ id })
         .getOne()
     )?.value
   }
 
-  async set(key: string, value: string): Promise<void> {
+  async set(id: string, value: string): Promise<void> {
     const obj = new StringObject()
-    obj.key = key
+    obj.id = id
     obj.value = value
     await this.dataSource?.getRepository(StringObject)?.save(obj)
   }
 
-  async increment(key: string): Promise<number> {
+  async increment(id: string): Promise<number> {
     const repo = this.dataSource?.getRepository(StringObject)
-    const data = await repo?.findOne({ where: { key } })
+    const data = await repo?.findOne({ where: { id } })
     if (data) {
       let value = Number.parseInt(data.value)
       if (value != null) {
         value += 1
         data.value = `${value}`
       }
-      await repo.update({ key }, data)
+      await repo.update({ id }, data)
       return value
     } else {
       const obj = new StringObject()
-      obj.key = key
+      obj.id = id
       obj.value = '1'
       await repo.insert(obj)
       return 1
     }
   }
 
-  async rename(oldKey: string, newKey: string): Promise<void> {
+  async rename(oldId: string, newId: string): Promise<void> {
     const repo = this.dataSource?.getRepository(DbObject)
-    await repo?.delete({ key: newKey })
-    await repo?.update({ key: oldKey }, { key: newKey })
+    await repo?.delete({ id: newId })
+    await repo?.update({ id: oldId }, { id: newId })
   }
 
-  type(_key: string): Promise<ObjectType> {
+  type(id: string): Promise<ObjectType> {
     throw new Error('Method not implemented.')
   }
 
-  async expireInner(key: string, expireAt: Date): Promise<void> {
-    await this.dataSource
-      ?.getRepository(DbObject)
-      ?.update({ key }, { expireAt })
+  async expireInner(id: string, expireAt: Date): Promise<void> {
+    await this.dataSource?.getRepository(DbObject)?.update({ id }, { expireAt })
   }
 
   async ttlInner(
-    key: string,
+    id: string,
     comparator: (a: Date, b: Date) => number,
   ): Promise<number> {
     const expireAt = (
-      await this.dataSource?.getRepository(DbObject).findOne({ where: { key } })
+      await this.dataSource?.getRepository(DbObject).findOne({ where: { id } })
     )?.expireAt
     return expireAt ? comparator(expireAt, new Date()) : -1
   }
@@ -325,9 +323,9 @@ export class TypeORMDatabaseBackend
         cartesianProduct(
           !Array.isArray(key) ? [key] : key,
           !Array.isArray(member) ? [member] : member,
-        ).map(([key, member]) => {
+        ).map(([id, member]) => {
           const data = new HashSetObject()
-          data.key = key
+          data.id = id
           data.member = member
           return data
         }),
@@ -340,11 +338,11 @@ export class TypeORMDatabaseBackend
   }
 
   async setRemove(
-    key: string | string[],
+    id: string | string[],
     member: string | string[],
   ): Promise<void> {
     await this.dataSource?.getRepository(HashSetObject)?.delete({
-      key: Array.isArray(key) ? In(key) : key,
+      id: Array.isArray(id) ? In(id) : id,
       member: Array.isArray(member) ? In(member) : member,
     })
   }
@@ -353,20 +351,20 @@ export class TypeORMDatabaseBackend
     return this.setRemove(keys, value)
   }
 
-  async isSetMember(key: string, member: string): Promise<boolean> {
+  async isSetMember(id: string, member: string): Promise<boolean> {
     return (
       ((await this.getQueryBuildByClassWithLiveObject(HashSetObject)
-        ?.where({ key, member })
+        ?.where({ id, member })
         .getCount()) ?? 0) > 0
     )
   }
 
-  async isSetMembers(key: string, members: string[]): Promise<boolean[]> {
+  async isSetMembers(id: string, members: string[]): Promise<boolean[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
         baseAlias: 's',
       })
-        ?.where({ key, member: In(members) })
+        ?.where({ id, member: In(members) })
         .select('s.member')
         .getMany(),
     )
@@ -375,26 +373,26 @@ export class TypeORMDatabaseBackend
       .value()
   }
 
-  async isMemberOfSets(sets: string[], member: string): Promise<boolean[]> {
+  async isMemberOfSets(ids: string[], member: string): Promise<boolean[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
         baseAlias: 's',
       })
-        ?.where({ key: In(sets), member })
-        .select('s.key')
+        ?.where({ id: In(ids), member })
+        .select('s.id')
         .getMany(),
     )
-      .keyBy('key')
-      .thru((data) => sets.map((set) => set in data))
+      .keyBy('id')
+      .thru((data) => ids.map((set) => set in data))
       .value()
   }
 
-  async getSetMembers(key: string): Promise<string[]> {
+  async getSetMembers(id: string): Promise<string[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
         baseAlias: 's',
       })
-        .where({ key })
+        .where({ id })
         .select('s.member')
         .getMany(),
     )
@@ -402,57 +400,57 @@ export class TypeORMDatabaseBackend
       .value()
   }
 
-  setCount(key: string): Promise<number> {
+  setCount(id: string): Promise<number> {
     return this.getQueryBuildByClassWithLiveObject(HashSetObject)
-      .where({ key })
+      .where({ id })
       .getCount()
   }
 
-  async getSetsMembers(keys: string[]): Promise<string[][]> {
+  async getSetsMembers(ids: string[]): Promise<string[][]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
         baseAlias: 's',
       })
-        ?.where({ key: In(keys) })
-        .select(['s.key', 's.member'])
+        ?.where({ id: In(ids) })
+        .select(['s.id', 's.member'])
         .getMany(),
     )
-      .groupBy('key')
+      .groupBy('id')
       .mapValues((x) => _.map(x, 'member'))
-      .thru((data) => keys.map((key) => data[key] ?? []))
+      .thru((data) => ids.map((key) => data[key] ?? []))
       .value()
   }
 
-  async setsCount(keys: string[]): Promise<number[]> {
+  async setsCount(ids: string[]): Promise<number[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
         baseAlias: 's',
         liveObjectAlias: 'l',
       })
-        .where({ key: In(keys) })
-        .groupBy('l.key')
-        .select('s.key')
+        .where({ id: In(ids) })
+        .groupBy('l.id')
+        .select('s.id')
         .addSelect('COUNT(*)', 'count')
-        .getRawMany<{ key: string; count: number }>(),
+        .getRawMany<{ id: string; count: number }>(),
     )
-      .keyBy('key')
+      .keyBy('id')
       .mapValues('count')
-      .thru((data) => keys.map((key) => data[key] ?? 0))
+      .thru((data) => ids.map((key) => data[key] ?? 0))
       .value()
   }
 
-  setRemoveRandom(key: string): Promise<string> {
+  setRemoveRandom(id: string): Promise<string> {
     return this.dataSource?.transaction(async (em) => {
       const victim = await this.getQueryBuildByClassWithLiveObject(
         HashSetObject,
       )
-        .where({ key })
+        .where({ id })
         .orderBy('RANDOM()')
         .getOne()
       if (victim) {
         await em
           .getRepository(HashSetObject)
-          .delete(_.pick(victim, ['key', 'member']))
+          .delete(_.pick(victim, ['id', 'member']))
       }
       return victim?.member
     })
@@ -472,17 +470,17 @@ export class TypeORMDatabaseBackend
       .innerJoin(
         DbObjectLive,
         liveObjectAlias,
-        `${liveObjectAlias}.key = ${baseAlias}.key`,
+        `${liveObjectAlias}.id = ${baseAlias}.id`,
       )
   }
 
   // Implement ListQueryable
-  listPrepend(key: string, value: string): Promise<void> {
+  listPrepend(id: string, value: string): Promise<void> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj =
-        (await em.getRepository(ListObject).findOne({ where: { key } })) ??
+        (await em.getRepository(ListObject).findOne({ where: { id } })) ??
         _.thru(new ListObject(), (l) => {
-          l.key = key
+          l.id = id
           return l
         })
       obj.array = [value, ...obj.array]
@@ -490,12 +488,12 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  listAppend(key: string, value: string): Promise<void> {
+  listAppend(id: string, value: string): Promise<void> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj =
-        (await em.getRepository(ListObject).findOne({ where: { key } })) ??
+        (await em.getRepository(ListObject).findOne({ where: { id } })) ??
         _.thru(new ListObject(), (l) => {
-          l.key = key
+          l.id = id
           return l
         })
       obj.array = [...obj.array, value]
@@ -503,12 +501,12 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  listRemoveLast(key: string): Promise<any> {
+  listRemoveLast(id: string): Promise<any> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
         em,
       })
-        .where({ key })
+        .where({ id })
         .getOneOrFail()
       const ret = obj.array.pop()
       await obj.save()
@@ -516,43 +514,43 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  listRemoveAll(key: string, value: string | string[]): Promise<void> {
+  listRemoveAll(id: string, value: string | string[]): Promise<void> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
         em,
       })
-        .where({ key })
+        .where({ id })
         .getOneOrFail()
       obj.array = _.without(obj.array, value)
       await obj.save()
     })
   }
 
-  listTrim(key: string, start: number, stop: number): Promise<void> {
+  listTrim(id: string, start: number, stop: number): Promise<void> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
         em,
       })
-        .where({ key })
+        .where({ id })
         .getOneOrFail()
       obj.array.splice(start, stop - start + (stop < 0 ? obj.array.length : 0))
       await obj.save()
     })
   }
 
-  getListRange(key: string, start: number, stop: number): Promise<any[]> {
+  getListRange(id: string, start: number, stop: number): Promise<any[]> {
     return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
       return (
         await this.getQueryBuildByClassWithLiveObject(ListObject, {
           em,
         })
-          .where({ key })
+          .where({ id })
           .getOneOrFail()
       ).array.slice(start, stop)
     })
   }
 
-  listLength(key: string): Promise<number> {
+  listLength(id: string): Promise<number> {
     return this.dataSource?.transaction(
       'SERIALIZABLE',
       async (em) =>
@@ -560,7 +558,7 @@ export class TypeORMDatabaseBackend
           await this.getQueryBuildByClassWithLiveObject(ListObject, {
             em,
           })
-            .where({ key })
+            .where({ id })
             .getOneOrFail()
         ).array.length,
     )
@@ -568,97 +566,95 @@ export class TypeORMDatabaseBackend
 
   // Implement HashQueryable
   decrObjectField(
-    key: string | string[],
-    field: string,
+    id: string | string[],
+    key: string,
   ): Promise<number | number[]> {
-    return this.incrObjectFieldBy(key, field, -1)
+    return this.incrObjectFieldBy(id, key, -1)
   }
 
-  async deleteObjectField(key: string, field: string): Promise<void> {
+  async deleteObjectField(id: string, key: string): Promise<void> {
+    await this.dataSource?.getRepository(HashObject).delete({ id, key })
+  }
+
+  async deleteObjectFields(id: string, keys: string[]): Promise<void> {
     await this.dataSource
       ?.getRepository(HashObject)
-      .delete({ hashKey: field, key })
+      .delete({ id, key: In(keys) })
   }
 
-  async deleteObjectFields(key: string, fields: string[]): Promise<void> {
-    await this.dataSource
-      ?.getRepository(HashObject)
-      .delete({ hashKey: In(fields), key })
-  }
-
-  async getObject(key: string, fields: string[]): Promise<object> {
-    if (fields.length > 0) {
-      return this.getObjectFields(key, fields)
+  async getObject(id: string, keys: string[]): Promise<object> {
+    if (keys.length > 0) {
+      return this.getObjectFields(id, keys)
     }
 
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ key })
-        .select(['h.hashKey', 'h.value'])
+        .where({ id })
+        .select(['h.key', 'h.value'])
         .getMany(),
     )
-      .keyBy('hashKey')
+      .keyBy('key')
       .mapValues('value')
       .value()
   }
 
-  async getObjectField(key: string, field: string): Promise<any> {
+  async getObjectField(id: string, key: string): Promise<any> {
     return (
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ hashKey: field, key })
+        .where({ id, key })
         .select('h.value')
         .getOne()
     )?.value
   }
 
   async getObjectFields(
-    key: string,
-    fields: string[],
+    id: string,
+    keys: string[],
   ): Promise<{ [key: string]: any }> {
-    return fields.length == 0
-      ? this.getObject(key, fields)
+    return keys.length == 0
+      ? this.getObject(id, keys)
       : _.chain(
           await this.getQueryBuildByClassWithLiveObject(HashObject, {
             baseAlias: 'h',
           })
-            .where({ hashKey: In(fields), key })
-            .select(['h.hashKey', 'h.value'])
+            .where({ id, key: In(keys) })
+            .select(['h.key', 'h.value'])
             .getMany(),
         )
-          .keyBy('hashKey')
+          .keyBy('key')
           .mapValues('value')
           .thru((x) =>
-            _.chain(fields)
-              .map((field) => [field, x[field] ?? null])
+            _.chain(keys)
+              .map((key) => [key, x[key] ?? null])
               .fromPairs()
               .value(),
           )
           .value()
   }
 
-  async getObjectKeys(key: string): Promise<string[]> {
+  async getObjectKeys(id: string): Promise<string[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ key })
-        .select(['h.hashKey'])
+        .where({ id })
+        .select(['h.key'])
         .getMany(),
     )
-      .map('hashKey')
+      .map('key')
       .value()
   }
 
-  async getObjectValues(key: string): Promise<any[]> {
+  async getObjectValues(id: string): Promise<any[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ key })
+        .where({ id })
         .select(['h.value'])
         .getMany(),
     )
@@ -666,78 +662,78 @@ export class TypeORMDatabaseBackend
       .value()
   }
 
-  async getObjects(keys: string[], fields: string[] = []): Promise<any[]> {
-    if (!Array.isArray(keys) || !keys.length) {
+  async getObjects(ids: string[], keys: string[] = []): Promise<any[]> {
+    if (!Array.isArray(ids) || !ids.length) {
       return []
     }
 
-    if (fields.length) {
-      return this.getObjectsFields(keys, fields)
+    if (keys.length) {
+      return this.getObjectsFields(ids, keys)
     }
 
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ key: In(keys) })
-        .select(['h.key', 'h.hashKey', 'h.value'])
+        .where({ id: In(ids) })
+        .select(['h.id', 'h.key', 'h.value'])
         .getMany(),
     )
-      .groupBy('key')
-      .mapValues((x) => _.chain(x).keyBy('hashKey').mapValues('value').value())
-      .thru((x) => keys.map((key) => x[key] ?? {}))
+      .groupBy('id')
+      .mapValues((x) => _.chain(x).keyBy('key').mapValues('value').value())
+      .thru((x) => ids.map((key) => x[key] ?? {}))
       .value()
   }
 
   async getObjectsFields(
-    keys: string[],
-    fields: string[] = [],
+    ids: string[],
+    keys: string[] = [],
   ): Promise<{ [p: string]: any }[]> {
-    if (!Array.isArray(keys) || !keys.length) {
+    if (!Array.isArray(ids) || !ids.length) {
       return []
     }
 
-    if (!Array.isArray(fields) || !fields.length) {
-      return this.getObjects(keys)
+    if (!Array.isArray(keys) || !keys.length) {
+      return this.getObjects(ids)
     }
 
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ hashKey: In(fields), key: In(keys) })
-        .select(['h.key', 'h.hashKey', 'h.value'])
+        .where({ id: In(ids), key: In(keys) })
+        .select(['h.id', 'h.key', 'h.value'])
         .getMany(),
     )
-      .groupBy('key')
-      .mapValues((x) => _.chain(x).keyBy('hashKey').mapValues('value').value())
-      .thru((x) => keys.map((key) => x[key]))
+      .groupBy('id')
+      .mapValues((x) => _.chain(x).keyBy('key').mapValues('value').value())
+      .thru((x) => ids.map((key) => x[key]))
       .value()
   }
 
   incrObjectField(
-    key: string | string[],
-    field: string,
+    idOrIds: string | string[],
+    key: string,
   ): Promise<number | number[]> {
-    return this.incrObjectFieldBy(key, field, 1)
+    return this.incrObjectFieldBy(idOrIds, key, 1)
   }
 
   async incrObjectFieldHelper(
     repo: Repository<HashObject>,
+    id: string,
     key: string,
-    hashKey: string,
     incrValue: number,
   ): Promise<HashObject> {
     const data =
       (await repo.findOne({
         where: {
-          hashKey,
+          id,
           key,
         },
       })) ??
       _.thru(new HashObject(), (x) => {
+        x.id = id
         x.key = key
-        x.hashKey = hashKey
         x.value = 0
         return x
       })
@@ -748,29 +744,31 @@ export class TypeORMDatabaseBackend
   }
 
   incrObjectFieldBy(
-    key: string | string[],
-    field: string,
+    idOrIds: string | string[],
+    key: string,
     value: number,
   ): Promise<number | number[]> {
     return this.dataSource?.transaction(async (em) => {
       const repo = em.getRepository(HashObject)
 
-      if (Array.isArray(key)) {
+      if (Array.isArray(idOrIds)) {
         return _.chain(
           await repo.save(
             await Promise.all(
-              key.map((k) => this.incrObjectFieldHelper(repo, k, field, value)),
+              idOrIds.map((id) =>
+                this.incrObjectFieldHelper(repo, id, key, value),
+              ),
             ),
           ),
         )
-          .keyBy('key')
-          .thru((x) => key.map((k) => x[k]?.value ?? -1))
+          .keyBy('id')
+          .thru((x) => idOrIds.map((k) => x[k]?.value ?? -1))
           .value()
       } else {
         return (
           (
             await repo.save(
-              await this.incrObjectFieldHelper(repo, key, field, value),
+              await this.incrObjectFieldHelper(repo, idOrIds, key, value),
             )
           )?.value ?? -1
         )
@@ -798,25 +796,25 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  async isObjectField(key: string, field: string): Promise<boolean> {
+  async isObjectField(id: string, key: string): Promise<boolean> {
     return (
       (await this.getQueryBuildByClassWithLiveObject(HashObject)
-        .where({ hashKey: field, key })
+        .where({ id, key })
         .getCount()) > 0
     )
   }
 
-  async isObjectFields(key: string, fields: string[]): Promise<boolean[]> {
+  async isObjectFields(id: string, keys: string[]): Promise<boolean[]> {
     return _.chain(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
-        .where({ hashKey: In(fields), key })
-        .select('h.hashKey')
+        .where({ id, key: In(keys) })
+        .select('h.key')
         .getMany(),
     )
-      .keyBy('hashKey')
-      .thru((x) => fields.map((field) => field in x))
+      .keyBy('key')
+      .thru((x) => keys.map((key) => key in x))
       .value()
   }
 
@@ -836,15 +834,15 @@ export class TypeORMDatabaseBackend
       ?.getRepository(HashObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['value'], ['_key', 'hashKey'])
+      .orUpdate(['value'], ['id', 'key'])
       .values(
         cartesianProduct(
           !Array.isArray(key) ? [key] : key,
           Object.entries(data) as any[],
-        ).map(([key, [hashKey, value]]) => {
+        ).map(([id, [key, value]]) => {
           const x = new HashObject()
+          x.id = id
           x.key = key
-          x.hashKey = hashKey
           x.value = value
           return x
         }),
@@ -859,7 +857,7 @@ export class TypeORMDatabaseBackend
       ?.getRepository(HashObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['value'], ['_key', 'hashKey'])
+      .orUpdate(['value'], ['id', 'key'])
       .values(
         args.flatMap(([key, data]) => {
           // eslint-disable-next-line no-prototype-builtins
@@ -870,10 +868,10 @@ export class TypeORMDatabaseBackend
           return cartesianProduct(
             Array.isArray(key) ? key : [key],
             Object.entries(data) as any[],
-          ).map(([key, [hashKey, value]]) => {
+          ).map(([id, [key, value]]) => {
             const x = new HashObject()
+            x.id = id
             x.key = key
-            x.hashKey = hashKey
             x.value = value
             return x
           })
@@ -883,11 +881,11 @@ export class TypeORMDatabaseBackend
   }
 
   setObjectField(
-    key: string | string[],
-    field: string,
+    id: string | string[],
+    key: string,
     value: any,
   ): Promise<void> {
-    return this.setObject(key, { [field]: value })
+    return this.setObject(id, { [key]: value })
   }
 
   // Implement SortedSetQueryable

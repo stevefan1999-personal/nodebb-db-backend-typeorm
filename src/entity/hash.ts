@@ -12,11 +12,11 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.HASH })
-@Index(['key', 'hashKey'])
+@Index(['id', 'key'])
 export class HashObject extends TypedObject(ObjectType.HASH) {
   @PrimaryColumn()
   @Index()
-  hashKey: string
+  key: string
 
   @Column({ type: 'simple-json' })
   value: any
@@ -35,9 +35,9 @@ export class HashObjectSubscriber
       .getRepository(DbObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['type'], ['_key', 'type'])
+      .orUpdate(['type'], ['id', 'type'])
       .values({
-        key: event.entity.key,
+        id: event.entity.id,
         type: event.entity.type,
       })
       .execute()

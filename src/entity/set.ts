@@ -11,7 +11,7 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.SET })
-@Index(['key', 'member'])
+@Index(['id', 'member'])
 export class HashSetObject extends TypedObject(ObjectType.SET) {
   @PrimaryColumn()
   @Index()
@@ -31,9 +31,9 @@ export class HashSetObjectSubscriber
       .getRepository(DbObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['type'], ['_key', 'type'])
+      .orUpdate(['type'], ['id', 'type'])
       .values({
-        key: event.entity.key,
+        id: event.entity.id,
         type: event.entity.type,
       })
       .execute()

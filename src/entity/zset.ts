@@ -12,12 +12,12 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.SORTED_SET })
-@Index(['key', 'score'])
-@Index(['key', 'value'])
+@Index(['id', 'score'])
+@Index(['id', 'member'])
 export class SortedSetObject extends TypedObject(ObjectType.SORTED_SET) {
   @PrimaryColumn()
   @Index()
-  value: string
+  member: string
 
   @Column()
   @Index()
@@ -37,9 +37,9 @@ export class SortedSetObjectSubscriber
       .getRepository(DbObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['type'], ['_key', 'type'])
+      .orUpdate(['type'], ['id', 'type'])
       .values({
-        key: event.entity.key,
+        id: event.entity.id,
         type: event.entity.type,
       })
       .execute()
