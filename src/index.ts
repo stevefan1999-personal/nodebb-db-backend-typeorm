@@ -416,11 +416,8 @@ export class TypeORMDatabaseBackend
   }
 
   setCount(key: string): Promise<number> {
-    return this.getQueryBuildByClassWithLiveObject(HashSetObject, {
-      baseAlias: 's',
-    })
+    return this.getQueryBuildByClassWithLiveObject(HashSetObject)
       .where({ key })
-      .select('s.member')
       .getCount()
   }
 
