@@ -14,6 +14,7 @@ import { WinstonAdaptor } from 'typeorm-logger-adaptor/logger/winston'
 import * as winston from 'winston'
 
 import {
+  HashQueryable,
   HashSetQueryable,
   INodeBBDatabaseBackend,
   ListQueryable,
@@ -25,6 +26,7 @@ import {
 import {
   DbObject,
   entities,
+  HashObject,
   HashSetObject,
   ListObject,
   StringObject,
@@ -57,7 +59,8 @@ export class TypeORMDatabaseBackend
     INodeBBDatabaseBackend,
     StringQueryable,
     HashSetQueryable,
-    ListQueryable
+    ListQueryable,
+    HashQueryable
 {
   #dataSource?: DataSource = null
 
@@ -572,6 +575,328 @@ export class TypeORMDatabaseBackend
             .getOneOrFail()
         ).array.length,
     )
+  }
+
+  // Implement HashQueryable
+  decrObjectField(
+    key: string | string[],
+    field: string,
+  ): Promise<number | number[]> {
+    return this.incrObjectFieldBy(key, field, -1)
+  }
+
+  async deleteObjectField(key: string, field: string): Promise<void> {
+    await this.dataSource
+      ?.getRepository(HashObject)
+      .delete({ hashKey: field, key })
+  }
+
+  async deleteObjectFields(key: string, fields: string[]): Promise<void> {
+    await this.dataSource
+      ?.getRepository(HashObject)
+      .delete({ hashKey: In(fields), key })
+  }
+
+  async getObject(key: string, fields: string[]): Promise<object> {
+    if (fields.length > 0) {
+      return this.getObjectFields(key, fields)
+    }
+
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ key })
+        .select(['h.hashKey', 'h.value'])
+        .getMany(),
+    )
+      .keyBy('hashKey')
+      .mapValues('value')
+      .value()
+  }
+
+  async getObjectField(key: string, field: string): Promise<any> {
+    return (
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ hashKey: field, key })
+        .select('h.value')
+        .getOne()
+    )?.value
+  }
+
+  async getObjectFields(
+    key: string,
+    fields: string[],
+  ): Promise<{ [key: string]: any }> {
+    return fields.length == 0
+      ? this.getObject(key, fields)
+      : _.chain(
+          await this.getQueryBuildByClassWithLiveObject(HashObject, {
+            baseAlias: 'h',
+          })
+            .where({ hashKey: In(fields), key })
+            .select(['h.hashKey', 'h.value'])
+            .getMany(),
+        )
+          .keyBy('hashKey')
+          .mapValues('value')
+          .thru((x) =>
+            _.chain(fields)
+              .map((field) => [field, x[field]])
+              .fromPairs()
+              .value(),
+          )
+          .value()
+  }
+
+  async getObjectKeys(key: string): Promise<string[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ key })
+        .select(['h.hashKey'])
+        .getMany(),
+    )
+      .map('hashKey')
+      .value()
+  }
+
+  async getObjectValues(key: string): Promise<any[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ key })
+        .select(['h.value'])
+        .getMany(),
+    )
+      .map('value')
+      .value()
+  }
+
+  async getObjects(keys: string[], fields: string[] = []): Promise<any[]> {
+    if (!Array.isArray(keys) || !keys.length) {
+      return []
+    }
+
+    if (fields.length) {
+      return this.getObjectsFields(keys, fields)
+    }
+
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ key: In(keys) })
+        .select(['h.key', 'h.hashKey', 'h.value'])
+        .getMany(),
+    )
+      .groupBy('key')
+      .mapValues((x) => _.chain(x).keyBy('hashKey').mapValues('value').value())
+      .thru((x) => keys.map((key) => x[key] ?? {}))
+      .value()
+  }
+
+  async getObjectsFields(
+    keys: string[],
+    fields: string[] = [],
+  ): Promise<{ [p: string]: any }[]> {
+    if (!Array.isArray(keys) || !keys.length) {
+      return []
+    }
+
+    if (!Array.isArray(fields) || !fields.length) {
+      return this.getObjects(keys)
+    }
+
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ hashKey: In(fields), key: In(keys) })
+        .select(['h.key', 'h.hashKey', 'h.value'])
+        .getMany(),
+    )
+      .groupBy('key')
+      .mapValues((x) => _.chain(x).keyBy('hashKey').mapValues('value').value())
+      .thru((x) => keys.map((key) => x[key]))
+      .value()
+  }
+
+  incrObjectField(
+    key: string | string[],
+    field: string,
+  ): Promise<number | number[]> {
+    return this.incrObjectFieldBy(key, field, 1)
+  }
+
+  async incrObjectFieldHelper(
+    repo: Repository<HashObject>,
+    key: string,
+    hashKey: string,
+    incrValue: number,
+  ): Promise<HashObject> {
+    const data =
+      (await repo.findOneBy({
+        hashKey,
+        key,
+      })) ??
+      _.thru(new HashObject(), (x) => {
+        x.key = key
+        x.hashKey = hashKey
+        x.value = 0
+        return x
+      })
+    if (Number.isFinite(data.value)) {
+      data.value += incrValue
+    }
+    return data
+  }
+
+  incrObjectFieldBy(
+    key: string | string[],
+    field: string,
+    value: number,
+  ): Promise<number | number[]> {
+    return this.dataSource?.transaction(async (em) => {
+      const repo = em.getRepository(HashObject)
+
+      if (Array.isArray(key)) {
+        return _.chain(
+          await repo.save(
+            await Promise.all(
+              key.map((k) => this.incrObjectFieldHelper(repo, k, field, value)),
+            ),
+          ),
+        )
+          .keyBy('key')
+          .thru((x) => key.map((k) => x[k]?.value ?? -1))
+          .value()
+      } else {
+        return (
+          (
+            await repo.save(
+              await this.incrObjectFieldHelper(repo, key, field, value),
+            )
+          )?.value ?? -1
+        )
+      }
+    })
+  }
+
+  incrObjectFieldByBulk(
+    data: [key: string | string[], batch: [field: string, value: number][]][],
+  ): Promise<void> {
+    return this.dataSource?.transaction(async (em) => {
+      const repo = em.getRepository(HashObject)
+      const values = data
+        .map(
+          ([key, kv]) =>
+            cartesianProduct(
+              Array.isArray(key) ? key : [key],
+              kv as any,
+            ) as any[],
+        )
+        .map(([key, [field, value]]) =>
+          this.incrObjectFieldHelper(repo, key, field, value),
+        )
+      await repo.save(await Promise.all(values))
+    })
+  }
+
+  async isObjectField(key: string, field: string): Promise<boolean> {
+    return (
+      (await this.getQueryBuildByClassWithLiveObject(HashObject)
+        .where({ hashKey: field, key })
+        .getCount()) > 0
+    )
+  }
+
+  async isObjectFields(key: string, fields: string[]): Promise<boolean[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(HashObject, {
+        baseAlias: 'h',
+      })
+        .where({ hashKey: In(fields), key })
+        .select('h.hashKey')
+        .getMany(),
+    )
+      .keyBy('hashKey')
+      .thru((x) => fields.map((field) => field in x))
+      .value()
+  }
+
+  async setObject(
+    key: string | string[],
+    data: { [p: string]: any },
+  ): Promise<void> {
+    // eslint-disable-next-line no-prototype-builtins
+    if (data.hasOwnProperty('')) {
+      delete data['']
+    }
+    if (!Object.keys(data).length) {
+      return
+    }
+
+    await this.dataSource
+      ?.getRepository(HashObject)
+      .createQueryBuilder()
+      .insert()
+      .orUpdate(['value'], ['_key', 'hashKey'])
+      .values(
+        cartesianProduct(
+          !Array.isArray(key) ? [key] : key,
+          Object.entries(data) as any[],
+        ).map(([key, [hashKey, value]]) => {
+          const x = new HashObject()
+          x.key = key
+          x.hashKey = hashKey
+          x.value = value
+          return x
+        }),
+      )
+      .execute()
+  }
+
+  async setObjectBulk(
+    args: [key: string | string[], data: { [key: string]: any }][],
+  ): Promise<void> {
+    await this.dataSource
+      ?.getRepository(HashObject)
+      .createQueryBuilder()
+      .insert()
+      .orUpdate(['value'], ['_key', 'hashKey'])
+      .values(
+        args.flatMap(([key, data]) => {
+          // eslint-disable-next-line no-prototype-builtins
+          if (data.hasOwnProperty('')) {
+            delete data['']
+          }
+
+          return cartesianProduct(
+            Array.isArray(key) ? key : [key],
+            Object.entries(data) as any[],
+          ).map(([key, [hashKey, value]]) => {
+            const x = new HashObject()
+            x.key = key
+            x.hashKey = hashKey
+            x.value = value
+            return x
+          })
+        }),
+      )
+      .execute()
+  }
+
+  setObjectField(
+    key: string | string[],
+    field: string,
+    value: any,
+  ): Promise<void> {
+    return this.setObject(key, { [field]: value })
   }
 }
 
