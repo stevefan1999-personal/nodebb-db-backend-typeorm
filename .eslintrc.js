@@ -67,6 +67,7 @@ module.exports = {
         ],
       },
     ],
+    'node/no-unpublished-import': 'warn',
     'node/no-unsupported-features/es-syntax': 'off',
     'object-shorthand': ['warn'],
     'sort-keys/sort-keys-fix': [
