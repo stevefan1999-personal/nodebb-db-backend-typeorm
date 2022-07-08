@@ -382,7 +382,6 @@ export class TypeORMDatabaseBackend
         .select('s.key')
         .getMany(),
     )
-      .uniq()
       .keyBy('key')
       .thru((data) => sets.map((set) => set in data))
       .value()
