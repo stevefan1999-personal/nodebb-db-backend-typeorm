@@ -631,7 +631,7 @@ export class TypeORMDatabaseBackend
           .mapValues('value')
           .thru((x) =>
             _.chain(fields)
-              .map((field) => [field, x[field]])
+              .map((field) => [field, x[field] ?? null])
               .fromPairs()
               .value(),
           )
