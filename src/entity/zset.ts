@@ -13,11 +13,14 @@ import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.SORTED_SET })
 @Index(['key', 'score'])
+@Index(['key', 'value'])
 export class SortedSetObject extends TypedObject(ObjectType.SORTED_SET) {
   @PrimaryColumn()
+  @Index()
   value: string
 
   @Column()
+  @Index()
   score: number
 }
 

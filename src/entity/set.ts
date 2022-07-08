@@ -2,6 +2,7 @@ import {
   Entity,
   EntitySubscriberInterface,
   EventSubscriber,
+  Index,
   InsertEvent,
   PrimaryColumn,
 } from 'typeorm'
@@ -10,8 +11,10 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.SET })
+@Index(['key', 'member'])
 export class HashSetObject extends TypedObject(ObjectType.SET) {
   @PrimaryColumn()
+  @Index()
   member: string
 }
 

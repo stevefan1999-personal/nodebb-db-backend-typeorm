@@ -3,6 +3,7 @@ import {
   Entity,
   EntitySubscriberInterface,
   EventSubscriber,
+  Index,
   InsertEvent,
   PrimaryColumn,
 } from 'typeorm'
@@ -11,8 +12,10 @@ import { DbObject, ObjectType } from './object'
 import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.HASH })
+@Index(['key', 'hashKey'])
 export class HashObject extends TypedObject(ObjectType.HASH) {
   @PrimaryColumn()
+  @Index()
   hashKey: string
 
   @Column({ type: 'simple-json' })
