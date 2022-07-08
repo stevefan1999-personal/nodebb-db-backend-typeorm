@@ -8,6 +8,7 @@ import {
   DataSourceOptions,
   In,
   Like,
+  Repository,
   SelectQueryBuilder,
 } from 'typeorm'
 import * as winston from 'winston'
