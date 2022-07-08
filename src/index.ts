@@ -440,8 +440,7 @@ export class TypeORMDatabaseBackend
   }
 
   setRemoveRandom(key: string): Promise<string> {
-    return this.dataSource?.transaction(async (entityManager) => {
-      const repo = entityManager.getRepository(HashSetObject)
+    return this.dataSource?.transaction(async (em) => {
       const victim = await this.getQueryBuildByClassWithLiveObject(
         HashSetObject,
       )
@@ -449,7 +448,9 @@ export class TypeORMDatabaseBackend
         .orderBy('RANDOM()')
         .getOne()
       if (victim) {
-        await repo.delete(_.pick(victim, ['key', 'member']))
+        await em
+          .getRepository(HashSetObject)
+          .delete(_.pick(victim, ['key', 'member']))
       }
       return victim?.member
     })
