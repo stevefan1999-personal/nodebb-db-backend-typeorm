@@ -103,8 +103,8 @@ export class TypeORMDatabaseBackend
     return _.merge(connOptions, typeorm.options || {})
   }
 
-  async init(): Promise<void> {
-    const conf = TypeORMDatabaseBackend.getConnectionOptions()
+  async init(args?: DataSourceOptions): Promise<void> {
+    const conf = TypeORMDatabaseBackend.getConnectionOptions(args)
     try {
       this.#dataSource = await new DataSource({
         ...conf,
