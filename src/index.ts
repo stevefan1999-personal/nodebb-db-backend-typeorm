@@ -20,6 +20,7 @@ import {
   ListQueryable,
   ObjectType,
   RedisStyleMatchString,
+  SortedSetQueryable,
   StringQueryable,
 } from '../types'
 
@@ -54,7 +55,8 @@ export class TypeORMDatabaseBackend
     StringQueryable,
     HashSetQueryable,
     ListQueryable,
-    HashQueryable
+    HashQueryable,
+    SortedSetQueryable
 {
   #dataSource?: DataSource = null
 
@@ -886,5 +888,311 @@ export class TypeORMDatabaseBackend
     value: any,
   ): Promise<void> {
     return this.setObject(key, { [field]: value })
+  }
+
+  // Implement SortedSetQueryable
+  getSortedSetIntersect(params: {
+    sets: string[]
+    start?: number
+    stop?: number
+    weights?: number[]
+    withScores?: boolean
+    aggregate?: 'SUM' | 'MIN' | 'MAX'
+  }): Promise<string[] | { value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetMembers(key: string): Promise<string> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRange(
+    key: string,
+    start: number,
+    stop: number,
+  ): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRangeByLex(
+    key: string,
+    min: `(${number}` | `[${number}`,
+    max: `(${number}` | `[${number}`,
+    start: number,
+    count: number,
+  ): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRangeByScore(
+    key: string,
+    start: number,
+    count: number,
+    min: string,
+    max: number,
+  ): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRangeByScoreWithScores(
+    key: string,
+    start: number,
+    count: number,
+    min: string,
+    max: number,
+  ): Promise<{ value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRangeWithScores(
+    key: string,
+    start: number,
+    stop: number,
+  ): Promise<{ value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevIntersect(params: {
+    sets: string[]
+    start?: number
+    stop?: number
+    weights?: number[]
+    withScores?: boolean
+    aggregate?: 'SUM' | 'MIN' | 'MAX'
+  }): Promise<string[] | { value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevRange(
+    key: string,
+    start: number,
+    stop: number,
+  ): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevRangeByLex(
+    key: string,
+    max: `(${number}` | `[${number}`,
+    min: `(${number}` | `[${number}`,
+    start: number,
+    count: number,
+  ): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevRangeByScore(
+    key: string,
+    start: number,
+    count: number,
+    max: string,
+    min: number,
+  ): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevRangeByScoreWithScores(
+    key: string,
+    start: number,
+    count: number,
+    max: string,
+    min: number,
+  ): Promise<{ value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevRangeWithScores(
+    key: string,
+    start: number,
+    stop: number,
+  ): Promise<{ value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetRevUnion(params: {
+    sets: string[]
+    start?: number
+    stop?: number
+    weights?: number[]
+    withScores?: boolean
+    aggregate?: 'SUM' | 'MIN' | 'MAX'
+  }): Promise<string[] | { value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetScan(params: {
+    key: string
+    match: string
+    limit: number
+    withScores?: boolean
+  }): Promise<string[] | { value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetUnion(params: {
+    sets: string[]
+    start?: number
+    stop?: number
+    weights?: number[]
+    withScores?: boolean
+    aggregate?: 'SUM' | 'MIN' | 'MAX'
+  }): Promise<string[] | { value: string; score: number }[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  getSortedSetsMembers(keys: string[]): Promise<string[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  isMemberOfSortedSets(keys: string[], value: string): Promise<boolean[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  isSortedSetMember(key: string, value: string): Promise<boolean> {
+    throw new Error('Method not implemented.')
+  }
+
+  isSortedSetMembers(key: string, values: string[]): Promise<boolean[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  processSortedSet(
+    setKey: string,
+    processFn: (ids: number[]) => void | Promise<void>,
+    options: { withScores?: boolean; batch?: number; interval?: number },
+  ): Promise<any> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetAdd(
+    key: string,
+    score: number | number[],
+    value: string,
+  ): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetAddBulk(
+    data: [key: string, score: number, value: string][],
+  ): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetCard(key: string): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetCount(key: string, min: string, max: number): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetIncrBy(
+    key: string,
+    increment: number,
+    value: string,
+  ): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetIncrByBulk(
+    data: [key: string, increment: number, value: string][],
+  ): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetIntersectCard(keys: string[]): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetLexCount(
+    key: string,
+    min: `(${number}` | `[${number}`,
+    max: `(${number}` | `[${number}`,
+  ): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRank(key: string, value: string): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRanks(key: string, values: string[]): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRemove(key: string, value: string): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRemoveBulk(data: [key: string, member: string][]): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRemoveRangeByLex(
+    key: string,
+    min: `(${number}` | `[${number}`,
+    max: `(${number}` | `[${number}`,
+  ): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRevRank(key: string, value: string): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetRevRanks(key: string, values: string[]): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetScore(key: string, value: string): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetScores(key: string, values: string[]): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetUnionCard(keys: string[]): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsAdd(
+    keys: string[],
+    scores: number[],
+    value: string,
+  ): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsCard(keys: string[]): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsCardSum(keys: string[]): Promise<number> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsRanks(keys: string[], values: string[]): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsRemove(keys: string[], value: string): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsRemoveRangeByScore(
+    keys: string[],
+    min: number | '-inf',
+    max: number | '+inf',
+  ): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsRevRanks(keys: string[], values: string[]): Promise<number[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  sortedSetsScore(keys: string[], value: string): Promise<number[]> {
+    throw new Error('Method not implemented.')
   }
 }
