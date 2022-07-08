@@ -191,7 +191,7 @@ export class TypeORMDatabaseBackend
     } else if (typeof key === 'string') {
       return ((await repo?.countBy({ key })) ?? 0) > 0
     }
-    throw new Error('unexepected type')
+    throw new Error('unexpected type')
   }
 
   async emptydb(): Promise<void> {
@@ -256,10 +256,10 @@ export class TypeORMDatabaseBackend
     }
   }
 
-  async rename(oldkey: string, newkey: string): Promise<void> {
+  async rename(oldKey: string, newKey: string): Promise<void> {
     const repo = this.dataSource?.getRepository(DbObject)
-    await repo?.delete({ key: newkey })
-    await repo?.update({ key: oldkey }, { key: newkey })
+    await repo?.delete({ key: newKey })
+    await repo?.update({ key: oldKey }, { key: newKey })
   }
 
   type(_key: string): Promise<ObjectType> {
