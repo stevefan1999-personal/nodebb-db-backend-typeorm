@@ -194,8 +194,7 @@ export class TypeORMDatabaseBackend
           .getMany(),
       )
         .keyBy('key')
-        .mapValues(() => true)
-        .thru((data) => key.map((x) => data[x] ?? false))
+        .thru((data) => key.map((x) => x in data))
         .value()
     } else if (typeof key === 'string') {
       return ((await repo?.countBy({ key })) ?? 0) > 0
@@ -377,8 +376,7 @@ export class TypeORMDatabaseBackend
         .getMany(),
     )
       .keyBy('member')
-      .mapValues(() => true)
-      .thru((data) => members.map((member) => data[member] ?? false))
+      .thru((data) => members.map((member) => member in data))
       .value()
   }
 
@@ -393,8 +391,7 @@ export class TypeORMDatabaseBackend
     )
       .uniq()
       .keyBy('key')
-      .mapValues(() => true)
-      .thru((data) => sets.map((set) => data[set] ?? false))
+      .thru((data) => sets.map((set) => set in data))
       .value()
   }
 
