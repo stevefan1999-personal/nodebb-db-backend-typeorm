@@ -16,7 +16,7 @@ export class HashObject extends TypedObject(ObjectType.HASH) {
   hashKey: string
 
   @Column({ type: 'simple-json' })
-  value: object
+  value: any
 }
 
 @EventSubscriber()
