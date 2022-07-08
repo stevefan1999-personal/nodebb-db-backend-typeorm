@@ -10,7 +10,6 @@ import {
   Like,
   SelectQueryBuilder,
 } from 'typeorm'
-import { WinstonAdaptor } from 'typeorm-logger-adaptor/logger/winston'
 import * as winston from 'winston'
 
 import {
@@ -35,12 +34,6 @@ import {
 import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
 import { cartesianProduct, convertRedisStyleMatchToSqlWildCard } from './utils'
-
-const logger = winston.createLogger({
-  format: winston.format.cli(),
-  level: 'debug',
-  transports: [new winston.transports.Console()],
-})
 
 const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
   {
@@ -116,7 +109,6 @@ export class TypeORMDatabaseBackend
       this.#dataSource = await new DataSource({
         ...conf,
         entities,
-        logger: new WinstonAdaptor(logger, 'all'),
         subscribers,
       }).initialize()
     } catch (err) {
@@ -135,7 +127,6 @@ export class TypeORMDatabaseBackend
       const dataSource = await new DataSource({
         ...conf,
         entities: [(await import('./session/entity/session')).Session],
-        logger: new WinstonAdaptor(logger, 'all'),
       }).initialize()
       await dataSource.synchronize()
       return new SessionStore(dataSource)
