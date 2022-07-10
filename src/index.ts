@@ -696,53 +696,34 @@ export class TypeORMDatabaseBackend
       .value()
   }
 
-  async getObjects(ids: string[], keys: string[] = []): Promise<any[]> {
-    if (!Array.isArray(ids) || !ids.length) {
+  async getObjectsInner(ids: string[], keys: string[]): Promise<any[]> {
+    if (!(Array.isArray(ids) && ids.length > 0)) {
       return []
     }
 
-    if (keys.length) {
-      return this.getObjectsFields(ids, keys)
+    let qb = this.getQueryBuildByClassWithLiveObject(HashObject, {
+      baseAlias: 'h',
+    }).where({ id: In(ids) })
+    if (Array.isArray(keys) && keys.length > 0) {
+      qb = qb.andWhere({ key: In(keys) })
     }
 
-    return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashObject, {
-        baseAlias: 'h',
-      })
-        .where({ id: In(ids) })
-        .select(['h.id', 'h.key', 'h.value'])
-        .getMany(),
-    )
+    return _.chain(await qb.select(['h.id', 'h.key', 'h.value']).getMany())
       .groupBy('id')
       .mapValues((x) => _.chain(x).keyBy('key').mapValues('value').value())
-      .thru((x) => ids.map((key) => x[key] ?? {}))
+      .thru(mapper((x, id) => x[id] ?? {}, ids))
       .value()
   }
 
-  async getObjectsFields(
+  getObjects(ids: string[], keys: string[] = []): Promise<any[]> {
+    return this.getObjectsInner(ids, keys)
+  }
+
+  getObjectsFields(
     ids: string[],
     keys: string[] = [],
-  ): Promise<{ [p: string]: any }[]> {
-    if (!Array.isArray(ids) || !ids.length) {
-      return []
-    }
-
-    if (!Array.isArray(keys) || !keys.length) {
-      return this.getObjects(ids)
-    }
-
-    return _.chain(
-      await this.getQueryBuildByClassWithLiveObject(HashObject, {
-        baseAlias: 'h',
-      })
-        .where({ id: In(ids), key: In(keys) })
-        .select(['h.id', 'h.key', 'h.value'])
-        .getMany(),
-    )
-      .groupBy('id')
-      .mapValues((x) => _.chain(x).keyBy('key').mapValues('value').value())
-      .thru((x) => ids.map((key) => x[key]))
-      .value()
+  ): Promise<Record<string, any>[]> {
+    return this.getObjectsInner(ids, keys)
   }
 
   incrObjectField(
