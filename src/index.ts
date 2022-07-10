@@ -1206,22 +1206,65 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetAdd(
-    key: string,
-    score: number | number[],
-    value: string,
+  sortedSetAdd(id: string, score: number, value: string): Promise<void>
+  sortedSetAdd(id: string, scores: number[], values: string[]): Promise<void>
+  async sortedSetAdd(
+    id: string,
+    scoreOrScores: number | number[],
+    valueOrValues: string | string[],
   ): Promise<void> {
-    throw new Error('Method not implemented.')
+    if (!id) {
+      return
+    }
+
+    if (Array.isArray(scoreOrScores) && Array.isArray(valueOrValues)) {
+      return this.sortedSetAddBulk([[id, scoreOrScores, valueOrValues]])
+    }
+    if (!Number.isFinite(scoreOrScores)) {
+      throw new Error(`[[error:invalid-score, ${scoreOrScores}]]`)
+    }
+
+    await this.dataSource
+      ?.getRepository(SortedSetObject)
+      .createQueryBuilder()
+      .insert()
+      .orUpdate(['score'], ['id', 'member'])
+      .values({
+        ...new SortedSetObject(),
+        id,
+        member: valueOrValues as string,
+        score: scoreOrScores as number,
+      })
+      .execute()
   }
 
-  sortedSetAddBulk(
-    data: [key: string, score: number, value: string][],
+  async sortedSetAddBulk(
+    data: [id: string, scores: number[], members: string[]][],
   ): Promise<void> {
-    throw new Error('Method not implemented.')
-  }
+    const values: SortedSetObject[] = []
+    for (const [id, scores, members] of data) {
+      if (!scores.length || !members.length) {
+        return
+      }
+      if (scores.length !== members.length) {
+        throw new Error('[[error:invalid-data]]')
+      }
+      for (const [score, member] of _.zip(scores, members)) {
+        const value = new SortedSetObject()
+        value.id = id
+        value.member = member
+        value.score = score
+        values.push(value)
+      }
+    }
 
-  sortedSetCard(key: string): Promise<number> {
-    throw new Error('Method not implemented.')
+    await this.dataSource
+      ?.getRepository(SortedSetObject)
+      .createQueryBuilder()
+      .insert()
+      .orUpdate(['score'], ['id', 'member'])
+      .values(values)
+      .execute()
   }
 
   sortedSetCount(key: string, min: string, max: number): Promise<number> {
@@ -1298,12 +1341,29 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetsAdd(
-    keys: string[],
-    scores: number[],
-    value: string,
+  async sortedSetsAdd(
+    ids: string[],
+    scores: number | number[],
+    member: string,
   ): Promise<void> {
-    throw new Error('Method not implemented.')
+    await this.dataSource
+      ?.getRepository(SortedSetObject)
+      .createQueryBuilder()
+      .insert()
+      .orUpdate(['score'], ['id', 'member'])
+      .values(
+        cartesianProduct([
+          ids,
+          Array.isArray(scores) ? scores : [scores],
+          [member],
+        ]).map(([id, score, member_]) => ({
+          ...new SortedSetObject(),
+          id,
+          member: member_,
+          score,
+        })),
+      )
+      .execute()
   }
 
   sortedSetsCard(keys: string[]): Promise<number[]> {
