@@ -11,8 +11,8 @@ import { TypedObject } from './typed_object'
 
 @Entity({ name: ObjectType.STRING })
 export class StringObject extends TypedObject(ObjectType.STRING) {
-  @Column()
-  value: string
+  @Column('simple-json')
+  value: string | number
 }
 
 @EventSubscriber()
