@@ -1175,16 +1175,27 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  isMemberOfSortedSets(keys: string[], value: string): Promise<boolean[]> {
-    throw new Error('Method not implemented.')
+  async isSortedSetMember(id: string, member: string): Promise<boolean> {
+    return (
+      (await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({
+          id,
+          member,
+        })
+        .getCount()) > 0
+    )
   }
 
-  isSortedSetMember(key: string, value: string): Promise<boolean> {
-    throw new Error('Method not implemented.')
-  }
-
-  isSortedSetMembers(key: string, values: string[]): Promise<boolean[]> {
-    throw new Error('Method not implemented.')
+  async isSortedSetMembers(id: string, members: string[]): Promise<boolean[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({ id, member: In(members) })
+        .select('member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+    )
+      .keyBy('member')
+      .thru((x) => members.map((member) => member in x))
+      .value()
   }
 
   processSortedSet(
