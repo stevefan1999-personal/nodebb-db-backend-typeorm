@@ -987,13 +987,19 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRangeByScore(
-    _key: string,
-    _start: number,
-    _count: number,
-    _min: NumberTowardsMinima,
-    _max: NumberTowardsMaxima,
+    id: string,
+    start: number,
+    count: number,
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
   ): Promise<string[]> {
-    throw new Error('Method not implemented.')
+    return this.getSortedSetRangeInner({
+      byScore: { count, max, min },
+      id,
+      sort: 'ASC',
+      start,
+      withScores: false,
+    })
   }
 
   getSortedSetRangeByScoreWithScores(
