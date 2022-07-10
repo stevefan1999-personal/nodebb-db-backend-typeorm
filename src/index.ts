@@ -977,21 +977,21 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRangeByLex(
-    key: string,
-    min: `(${number}` | `[${number}`,
-    max: `(${number}` | `[${number}`,
-    start: number,
-    count: number,
+    _key: string,
+    _min: RedisStyleRangeString,
+    _max: RedisStyleRangeString,
+    _start: number,
+    _count: number,
   ): Promise<string[]> {
     throw new Error('Method not implemented.')
   }
 
   getSortedSetRangeByScore(
-    key: string,
-    start: number,
-    count: number,
-    min: string,
-    max: number,
+    _key: string,
+    _start: number,
+    _count: number,
+    _min: NumberTowardsMinima,
+    _max: NumberTowardsMaxima,
   ): Promise<string[]> {
     throw new Error('Method not implemented.')
   }
@@ -1053,11 +1053,11 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRevRangeByLex(
-    key: string,
-    max: `(${number}` | `[${number}`,
-    min: `(${number}` | `[${number}`,
-    start: number,
-    count: number,
+    _key: string,
+    _max: RedisStyleRangeString,
+    _min: RedisStyleRangeString,
+    _start: number,
+    _count: number,
   ): Promise<string[]> {
     throw new Error('Method not implemented.')
   }
@@ -1173,9 +1173,9 @@ export class TypeORMDatabaseBackend
   }
 
   processSortedSet(
-    setKey: string,
-    processFn: (ids: number[]) => void | Promise<void>,
-    options: { withScores?: boolean; batch?: number; interval?: number },
+    _setKey: string,
+    _processFn: (ids: number[]) => void | Promise<void>,
+    _options: { withScores?: boolean; batch?: number; interval?: number },
   ): Promise<any> {
     throw new Error('Method not implemented.')
   }
@@ -1265,15 +1265,15 @@ export class TypeORMDatabaseBackend
   }
 
   sortedSetIncrBy(
-    key: string,
-    increment: number,
-    value: string,
+    _id: string,
+    _increment: number,
+    _member: string,
   ): Promise<number> {
     throw new Error('Method not implemented.')
   }
 
   sortedSetIncrByBulk(
-    data: [key: string, increment: number, value: string][],
+    _data: [id: string, increment: number, member: string][],
   ): Promise<number[]> {
     throw new Error('Method not implemented.')
   }
@@ -1294,9 +1294,9 @@ export class TypeORMDatabaseBackend
   }
 
   sortedSetLexCount(
-    key: string,
-    min: `(${number}` | `[${number}`,
-    max: `(${number}` | `[${number}`,
+    _id: string,
+    _min: RedisStyleRangeString,
+    _max: RedisStyleRangeString,
   ): Promise<number> {
     throw new Error('Method not implemented.')
   }
@@ -1345,14 +1345,14 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetRemoveBulk(data: [key: string, member: string][]): Promise<void> {
+  sortedSetRemoveBulk(_data: [key: string, member: string][]): Promise<void> {
     throw new Error('Method not implemented.')
   }
 
   sortedSetRemoveRangeByLex(
-    key: string,
-    min: `(${number}` | `[${number}`,
-    max: `(${number}` | `[${number}`,
+    _key: string,
+    _min: RedisStyleRangeString,
+    _max: RedisStyleRangeString,
   ): Promise<void> {
     throw new Error('Method not implemented.')
   }
@@ -1478,9 +1478,9 @@ export class TypeORMDatabaseBackend
   }
 
   sortedSetsRemoveRangeByScore(
-    keys: string[],
-    min: number | '-inf',
-    max: number | '+inf',
+    _keys: string[],
+    _min: NumberTowardsMinima,
+    _max: NumberTowardsMaxima,
   ): Promise<void> {
     throw new Error('Method not implemented.')
   }
