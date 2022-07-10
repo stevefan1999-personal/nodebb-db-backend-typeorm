@@ -1,25 +1,45 @@
-import { RedisStyleMatchString, RedisStyleRangeString } from './index'
+import {
+  NumberTowardsMaxima,
+  NumberTowardsMinima,
+  RedisStyleAggregate,
+  RedisStyleMatchString,
+  RedisStyleRangeString,
+  ValueAndScore,
+} from './index'
 
-type SortedSetTheoryOperation = {
+export type SortedSetTheoryOperation = {
   sets: string[]
   start?: number
   stop?: number
   weights?: number[]
-  withScores?: boolean
-  aggregate?: 'SUM' | 'MIN' | 'MAX'
+  aggregate?: RedisStyleAggregate
+}
+
+export type SortedSetScanBaseParameters = {
+  key: string
+  match: RedisStyleMatchString
+  limit: number
 }
 
 export interface SortedSetQueryable {
   getSortedSetIntersect(
-    params: SortedSetTheoryOperation,
-  ): Promise<string[] | { value: string; score: number }[]>
+    params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
 
-  getSortedSetMembers(key: string): Promise<string>
+  getSortedSetIntersect(
+    params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
 
-  getSortedSetRange(key: string, start: number, stop: number): Promise<string[]>
+  getSortedSetMembers(key: string): Promise<string[]>
+
+  getSortedSetRange(
+    key: string | string[],
+    start: number,
+    stop: number,
+  ): Promise<string[]>
 
   getSortedSetRangeByLex(
-    key: string,
+    key: string | string[],
     min: RedisStyleRangeString,
     max: RedisStyleRangeString,
     start: number,
@@ -27,33 +47,37 @@ export interface SortedSetQueryable {
   ): Promise<string[]>
 
   getSortedSetRangeByScore(
-    key: string,
+    key: string | string[],
     start: number,
     count: number,
-    min: string,
-    max: number,
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
   ): Promise<string[]>
 
   getSortedSetRangeByScoreWithScores(
-    key: string,
+    key: string | string[],
     start: number,
     count: number,
-    min: string,
-    max: number,
-  ): Promise<{ value: string; score: number }[]>
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
+  ): Promise<ValueAndScore[]>
 
   getSortedSetRangeWithScores(
-    key: string,
+    key: string | string[],
     start: number,
     stop: number,
-  ): Promise<{ value: string; score: number }[]>
+  ): Promise<ValueAndScore[]>
 
   getSortedSetRevIntersect(
-    params: SortedSetTheoryOperation,
-  ): Promise<string[] | { value: string; score: number }[]>
+    params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+
+  getSortedSetRevIntersect(
+    params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
 
   getSortedSetRevRange(
-    key: string,
+    key: string | string[],
     start: number,
     stop: number,
   ): Promise<string[]>
@@ -70,40 +94,49 @@ export interface SortedSetQueryable {
     key: string,
     start: number,
     count: number,
-    max: string,
-    min: number,
+    max: NumberTowardsMaxima,
+    min: NumberTowardsMinima,
   ): Promise<string[]>
 
   getSortedSetRevRangeByScoreWithScores(
     key: string,
     start: number,
     count: number,
-    max: string,
-    min: number,
-  ): Promise<{ value: string; score: number }[]>
+    max: NumberTowardsMaxima,
+    min: NumberTowardsMinima,
+  ): Promise<ValueAndScore[]>
 
   getSortedSetRevRangeWithScores(
     key: string,
     start: number,
     stop: number,
-  ): Promise<{ value: string; score: number }[]>
+  ): Promise<ValueAndScore[]>
 
   getSortedSetRevUnion(
-    params: SortedSetTheoryOperation,
-  ): Promise<string[] | { value: string; score: number }[]>
+    params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
 
-  getSortedSetScan(params: {
-    key: string
-    match: RedisStyleMatchString
-    limit: number
-    withScores?: boolean
-  }): Promise<string[] | { value: string; score: number }[]>
+  getSortedSetRevUnion(
+    params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+
+  getSortedSetScan(
+    params: SortedSetScanBaseParameters & { withScores: true },
+  ): Promise<ValueAndScore[]>
+
+  getSortedSetScan(
+    params: SortedSetScanBaseParameters & { withScores: false },
+  ): Promise<string[]>
 
   getSortedSetUnion(
-    params: SortedSetTheoryOperation,
-  ): Promise<string[] | { value: string; score: number }[]>
+    params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
 
-  getSortedSetsMembers(keys: string[]): Promise<string[]>
+  getSortedSetUnion(
+    params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
+
+  getSortedSetsMembers(keys: string[]): Promise<string[][]>
 
   isMemberOfSortedSets(keys: string[], value: string): Promise<boolean[]>
 
@@ -117,19 +150,21 @@ export interface SortedSetQueryable {
     options: { withScores?: boolean; batch?: number; interval?: number },
   ): Promise<any>
 
-  sortedSetAdd(
-    key: string,
-    score: number | number[],
-    value: string,
-  ): Promise<void>
+  sortedSetAdd(key: string, score: number, value: string): Promise<void>
+
+  sortedSetAdd(key: string, score: number[], value: string[]): Promise<void>
 
   sortedSetAddBulk(
-    data: [key: string, score: number, value: string][],
+    args: [key: string, score: number[], value: string[]][],
   ): Promise<void>
 
   sortedSetCard(key: string): Promise<number>
 
-  sortedSetCount(key: string, min: string, max: number): Promise<number>
+  sortedSetCount(
+    key: string,
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
+  ): Promise<number>
 
   sortedSetIncrBy(
     key: string,
@@ -153,7 +188,10 @@ export interface SortedSetQueryable {
 
   sortedSetRanks(key: string, values: string[]): Promise<number[]>
 
-  sortedSetRemove(key: string, value: string): Promise<void>
+  sortedSetRemove(
+    key: string | string[],
+    value: string | string[],
+  ): Promise<void>
 
   sortedSetRemoveBulk(data: [key: string, member: string][]): Promise<void>
 
@@ -167,26 +205,33 @@ export interface SortedSetQueryable {
 
   sortedSetRevRanks(key: string, values: string[]): Promise<number[]>
 
-  sortedSetScore(key: string, value: string): Promise<number>
+  sortedSetScore(key: string, value: string): Promise<number | null>
 
   sortedSetScores(key: string, values: string[]): Promise<number[]>
 
   sortedSetUnionCard(keys: string[]): Promise<number>
 
-  sortedSetsAdd(keys: string[], scores: number[], value: string): Promise<void>
+  sortedSetsAdd(
+    keys: string[],
+    scores: number | number[],
+    value: string,
+  ): Promise<void>
 
   sortedSetsCard(keys: string[]): Promise<number[]>
 
   sortedSetsCardSum(keys: string[]): Promise<number>
 
-  sortedSetsRanks(keys: string[], values: string[]): Promise<number[]>
+  sortedSetsRanks<T extends readonly [] | readonly string[]>(
+    keys: T,
+    values: { [K in keyof T]: string },
+  ): Promise<number[]>
 
   sortedSetsRemove(keys: string[], value: string): Promise<void>
 
   sortedSetsRemoveRangeByScore(
     keys: string[],
-    min: number | '-inf',
-    max: number | '+inf',
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
   ): Promise<void>
 
   sortedSetsRevRanks(keys: string[], values: string[]): Promise<number[]>

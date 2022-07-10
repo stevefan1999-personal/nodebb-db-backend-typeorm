@@ -34,6 +34,7 @@ module.exports = {
   plugins: ['sort-keys'],
   root: true,
   rules: {
+    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     'import/order': [
       'error',
       {

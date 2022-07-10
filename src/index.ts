@@ -21,11 +21,16 @@ import {
   HashSetQueryable,
   INodeBBDatabaseBackend,
   ListQueryable,
+  NumberTowardsMaxima,
+  NumberTowardsMinima,
   ObjectType,
   RedisStyleMatchString,
   RedisStyleRangeString,
   SortedSetQueryable,
+  SortedSetScanBaseParameters,
+  SortedSetTheoryOperation,
   StringQueryable,
+  ValueAndScore,
 } from '../types'
 
 import {
@@ -70,8 +75,8 @@ type getSortedSetRangeInnerParams = {
     }
   | {
       byScore: {
-        min: number | '-inf'
-        max: number | '+inf'
+        min: NumberTowardsMinima
+        max: NumberTowardsMaxima
         count: number
       }
     }
@@ -203,9 +208,9 @@ export class TypeORMDatabaseBackend
   }
 
   // Implement StringQueryable
-  async exists(key: string): Promise<boolean>
-  async exists(key: string[]): Promise<boolean[]>
-  async exists(id: string | string[]): Promise<boolean | boolean[]> {
+  async exists(id: string): Promise<boolean>
+  async exists(ids: string[]): Promise<boolean[]>
+  async exists(idOrIds: string | string[]): Promise<boolean | boolean[]> {
     const repo = this.dataSource?.getRepository(DbObjectLive)
     if (Array.isArray(id)) {
       return _.chain(
@@ -881,18 +886,15 @@ export class TypeORMDatabaseBackend
   }
 
   // Implement SortedSetQueryable
-  getSortedSetIntersect(params: {
-    sets: string[]
-    start?: number
-    stop?: number
-    weights?: number[]
-    withScores?: boolean
-    aggregate?: 'SUM' | 'MIN' | 'MAX'
-  }): Promise<string[] | { value: string; score: number }[]> {
-    throw new Error('Method not implemented.')
-  }
-
-  getSortedSetMembers(key: string): Promise<string> {
+  getSortedSetIntersect(
+    _params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
+  getSortedSetIntersect(
+    _params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  getSortedSetIntersect(
+    _params: SortedSetTheoryOperation & { withScores?: boolean },
+  ): Promise<ValueAndScore[] | string[]> {
     throw new Error('Method not implemented.')
   }
 
@@ -998,8 +1000,8 @@ export class TypeORMDatabaseBackend
     id: string,
     start: number,
     count: number,
-    min: number | '-inf',
-    max: number | '+inf',
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
   ): Promise<ValueAndScore[]> {
     return this.getSortedSetRangeInner({
       byScore: { count, max, min },
@@ -1024,14 +1026,15 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  getSortedSetRevIntersect(params: {
-    sets: string[]
-    start?: number
-    stop?: number
-    weights?: number[]
-    withScores?: boolean
-    aggregate?: 'SUM' | 'MIN' | 'MAX'
-  }): Promise<string[] | { value: string; score: number }[]> {
+  getSortedSetRevIntersect(
+    _params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  getSortedSetRevIntersect(
+    _params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
+  getSortedSetRevIntersect(
+    _params: SortedSetTheoryOperation & { withScores?: boolean },
+  ): Promise<string[] | ValueAndScore[]> {
     throw new Error('Method not implemented.')
   }
 
@@ -1063,8 +1066,8 @@ export class TypeORMDatabaseBackend
     id: string,
     start: number,
     count: number,
-    max: number | '+inf',
-    min: number | '-inf',
+    max: NumberTowardsMaxima,
+    min: NumberTowardsMinima,
   ): Promise<string[]> {
     return this.getSortedSetRangeInner({
       byScore: { count, max, min },
@@ -1079,8 +1082,8 @@ export class TypeORMDatabaseBackend
     id: string,
     start: number,
     count: number,
-    max: number | '+inf',
-    min: number | '-inf',
+    max: NumberTowardsMaxima,
+    min: NumberTowardsMinima,
   ): Promise<ValueAndScore[]> {
     return this.getSortedSetRangeInner({
       byScore: { count, max, min },
@@ -1104,35 +1107,41 @@ export class TypeORMDatabaseBackend
       withScores: true,
     })
   }
-
-  getSortedSetRevUnion(params: {
-    sets: string[]
-    start?: number
-    stop?: number
-    weights?: number[]
-    withScores?: boolean
-    aggregate?: 'SUM' | 'MIN' | 'MAX'
-  }): Promise<string[] | { value: string; score: number }[]> {
+  getSortedSetRevUnion(
+    _params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  getSortedSetRevUnion(
+    _params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
+  getSortedSetRevUnion(
+    _params: SortedSetTheoryOperation & { withScores?: boolean },
+  ): Promise<string[] | ValueAndScore[]> {
     throw new Error('Method not implemented.')
   }
 
-  getSortedSetScan(params: {
-    key: string
-    match: string
-    limit: number
-    withScores?: boolean
-  }): Promise<string[] | { value: string; score: number }[]> {
+  getSortedSetScan(
+    params: SortedSetScanBaseParameters & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  getSortedSetScan(
+    params: SortedSetScanBaseParameters & { withScores: false },
+  ): Promise<string[]>
+  getSortedSetScan(
+    _params: SortedSetScanBaseParameters & {
+      withScores?: boolean
+    },
+  ): Promise<string[] | ValueAndScore[]> {
     throw new Error('Method not implemented.')
   }
 
-  getSortedSetUnion(params: {
-    sets: string[]
-    start?: number
-    stop?: number
-    weights?: number[]
-    withScores?: boolean
-    aggregate?: 'SUM' | 'MIN' | 'MAX'
-  }): Promise<string[] | { value: string; score: number }[]> {
+  getSortedSetUnion(
+    params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  getSortedSetUnion(
+    params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
+  getSortedSetUnion(
+    _params: SortedSetTheoryOperation & { withScores?: boolean },
+  ): Promise<string[] | ValueAndScore[]> {
     throw new Error('Method not implemented.')
   }
 
@@ -1240,8 +1249,8 @@ export class TypeORMDatabaseBackend
 
   async sortedSetCount(
     id: string,
-    min: number | '-inf',
-    max: number | '+inf',
+    min: NumberTowardsMinima,
+    max: NumberTowardsMaxima,
   ): Promise<number> {
     let baseQuery = this.getQueryBuildByClassWithLiveObject(
       SortedSetObject,

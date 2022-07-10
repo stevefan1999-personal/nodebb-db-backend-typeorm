@@ -4,7 +4,11 @@ export { HashQueryable } from './hash'
 export { ListQueryable } from './list'
 export { HashSetQueryable } from './set'
 export { StringQueryable } from './string'
-export { SortedSetQueryable } from './zset'
+export {
+  SortedSetQueryable,
+  SortedSetTheoryOperation,
+  SortedSetScanBaseParameters,
+} from './zset'
 
 export interface INodeBBDatabaseBackend {
   checkCompatibility(callback: () => void): Promise<void>
@@ -47,3 +51,8 @@ export enum ObjectType {
   STRING = 'string',
   SORTED_SET = 'zset',
 }
+
+export type ValueAndScore = { value: string; score: number }
+export type RedisStyleAggregate = 'SUM' | 'MIN' | 'MAX'
+export type NumberTowardsMinima = number | '-inf'
+export type NumberTowardsMaxima = number | '+inf'
