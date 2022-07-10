@@ -50,7 +50,6 @@ import {
   convertRedisStyleMatchToSqlWildCard,
   fixRange,
   mapper,
-  notOrder,
 } from './utils'
 
 const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
@@ -914,13 +913,9 @@ export class TypeORMDatabaseBackend
     string[] | ValueAndScore[]
   > {
     let offset: number
-    let relationReversed = false
     let limit: number
     if ('byRange' in rest) {
-      ;({ offset, relationReversed, limit } = fixRange(
-        start,
-        rest.byRange.stop,
-      ))
+      ;({ offset, limit } = fixRange(start, rest.byRange.stop))
     } else if ('byScore' in rest) {
       ;[offset, limit] = [start, rest.byScore.count]
     }
@@ -931,8 +926,8 @@ export class TypeORMDatabaseBackend
       .where({
         id: Array.isArray(id) ? In(id) : id,
       })
-      .addOrderBy('z.score', relationReversed ? notOrder(sort) : sort)
       .offset(offset)
+      .addOrderBy('z.score', sort)
 
     if ('byScore' in rest) {
       const { min, max } = rest.byScore
@@ -948,16 +943,8 @@ export class TypeORMDatabaseBackend
       qb = qb.limit(limit)
     }
 
-    if (relationReversed) {
-      qb = this.dataSource
-        .createQueryBuilder()
-        .addCommonTableExpression(qb, 'base')
-        .from('base', 'base')
-        .addOrderBy('base.score', sort) as SelectQueryBuilder<SortedSetObject>
-    }
-
-    const ret = (await qb.getRawMany<{ member: string; score: number }>()).map(
-      ({ member, score }) => (withScores ? { score, value: member } : member),
+    const ret = (await qb.getMany()).map(({ member, score }) =>
+      withScores ? { score, value: member } : member,
     )
     return withScores ? (ret as ValueAndScore[]) : (ret as string[])
   }

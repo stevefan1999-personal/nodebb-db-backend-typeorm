@@ -3,26 +3,19 @@ import { FindOperator } from 'typeorm/find-options/FindOperator'
 
 import { RedisStyleMatchString, RedisStyleRangeString } from '../types'
 
-export function notOrder(sort: 'ASC' | 'DESC'): 'ASC' | 'DESC' {
-  return sort === 'ASC' ? 'DESC' : 'ASC'
-}
-
 export function fixRange(
   start: number,
   stop: number,
 ): {
   offset: number
-  relationReversed: boolean
   limit?: number
 } {
-  let relationReversed = false
   // given an example of [1 2 3 4 5 6]
 
   // if we have something like {start:0, stop: -2}
   // we certainly cant make assumption about row sizes but
   if (start === 0 && stop < 0) {
     // we can flip the rows around
-    relationReversed = true
     // now the rows are [6 5 4 3 2 1]
     // we want to skip the first row (since we want from 0 until the penultimate entry)
     // which means offset by one -> [5 4 3 2 1]
@@ -46,7 +39,6 @@ export function fixRange(
   return {
     limit,
     offset: start,
-    relationReversed,
   }
 }
 
