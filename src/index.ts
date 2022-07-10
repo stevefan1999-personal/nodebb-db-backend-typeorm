@@ -648,7 +648,7 @@ export class TypeORMDatabaseBackend
   async getObjectFields(
     id: string,
     keys: string[],
-  ): Promise<{ [key: string]: any }> {
+  ): Promise<Record<string, any>> {
     return keys.length == 0
       ? this.getObject(id, keys)
       : _.chain(
@@ -792,7 +792,7 @@ export class TypeORMDatabaseBackend
   }
 
   incrObjectFieldByBulk(
-    data: [key: string | string[], batch: [field: string, value: number][]][],
+    data: [key: string, batch: Record<string, number>][],
   ): Promise<void> {
     return this.dataSource?.transaction(async (em) => {
       const repo = em.getRepository(HashObject)
@@ -834,8 +834,8 @@ export class TypeORMDatabaseBackend
   }
 
   async setObject(
-    key: string | string[],
-    data: { [p: string]: any },
+    keyOrKeys: string | string[],
+    data: Record<string, any>,
   ): Promise<void> {
     // eslint-disable-next-line no-prototype-builtins
     if (data.hasOwnProperty('')) {
@@ -866,7 +866,7 @@ export class TypeORMDatabaseBackend
   }
 
   async setObjectBulk(
-    args: [key: string | string[], data: { [key: string]: any }][],
+    args: [key: string | string[], data: Record<string, any>][],
   ): Promise<void> {
     await this.dataSource
       ?.getRepository(HashObject)
