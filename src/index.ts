@@ -6,6 +6,7 @@ import * as nconf from 'nconf'
 import {
   DataSource,
   DataSourceOptions,
+  EntityManager,
   In,
   LessThanOrEqual,
   Like,
@@ -486,19 +487,24 @@ export class TypeORMDatabaseBackend
   private getQueryBuildByClassWithLiveObject<T>(
     klass: { new (): T },
     {
-      baseAlias = 's',
-      liveObjectAlias = 'l',
+      baseAlias = 'b',
+      liveObjectAlias = 'lo',
       em = this.dataSource?.manager,
+      repo = em?.getRepository(klass),
+      queryBuilder = repo?.createQueryBuilder(baseAlias),
+    }: {
+      baseAlias?: string
+      liveObjectAlias?: string
+      em?: EntityManager
+      repo?: Repository<T>
+      queryBuilder?: SelectQueryBuilder<T>
     } = {},
   ): SelectQueryBuilder<T> | null {
-    return em
-      ?.getRepository(klass)
-      .createQueryBuilder(baseAlias)
-      .innerJoin(
-        DbObjectLive,
-        liveObjectAlias,
-        `${liveObjectAlias}.id = ${baseAlias}.id`,
-      )
+    return queryBuilder?.innerJoin(
+      DbObjectLive,
+      liveObjectAlias,
+      `${liveObjectAlias}.id = ${baseAlias}.id`,
+    )
   }
 
   // Implement ListQueryable
