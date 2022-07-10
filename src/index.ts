@@ -7,7 +7,9 @@ import {
   DataSource,
   DataSourceOptions,
   In,
+  LessThanOrEqual,
   Like,
+  MoreThanOrEqual,
   Repository,
   SelectQueryBuilder,
 } from 'typeorm'
@@ -20,6 +22,7 @@ import {
   ListQueryable,
   ObjectType,
   RedisStyleMatchString,
+  RedisStyleRangeString,
   SortedSetQueryable,
   StringQueryable,
 } from '../types'
@@ -30,12 +33,19 @@ import {
   HashObject,
   HashSetObject,
   ListObject,
+  SortedSetObject,
   StringObject,
   subscribers,
 } from './entity'
 import { DbObjectLive } from './entity/object'
 import { SessionStore } from './session'
-import { cartesianProduct, convertRedisStyleMatchToSqlWildCard } from './utils'
+import {
+  cartesianProduct,
+  convertRedisStyleMatchToSqlWildCard,
+  fixRange,
+  mapper,
+  notOrder,
+} from './utils'
 
 const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
   {
@@ -48,6 +58,23 @@ const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
       username: 'postgres',
     },
   }
+
+type getSortedSetRangeInnerParams = {
+  id: string | string[]
+  sort: 'ASC' | 'DESC'
+  start: number
+} & (
+  | {
+      byRange: { stop: number }
+    }
+  | {
+      byScore: {
+        min: number | '-inf'
+        max: number | '+inf'
+        count: number
+      }
+    }
+)
 
 export class TypeORMDatabaseBackend
   implements
@@ -904,12 +931,82 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
+  async getSortedSetRangeInner(
+    args: getSortedSetRangeInnerParams & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  async getSortedSetRangeInner(
+    args: getSortedSetRangeInnerParams & { withScores: false },
+  ): Promise<string[]>
+  async getSortedSetRangeInner({
+    id,
+    sort,
+    start,
+    withScores = false,
+    ...rest
+  }: getSortedSetRangeInnerParams & { withScores?: boolean }): Promise<
+    string[] | ValueAndScore[]
+  > {
+    let offset: number
+    let relationReversed = false
+    let limit: number
+    if ('byRange' in rest) {
+      ;({ offset, relationReversed, limit } = fixRange(
+        start,
+        rest.byRange.stop,
+      ))
+    } else if ('byScore' in rest) {
+      ;[offset, limit] = [start, rest.byScore.count]
+    }
+
+    let qb = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+      baseAlias: 'z',
+    })
+      .where({
+        id: Array.isArray(id) ? In(id) : id,
+      })
+      .addOrderBy('z.score', relationReversed ? notOrder(sort) : sort)
+      .offset(offset)
+
+    if ('byScore' in rest) {
+      const { min, max } = rest.byScore
+      if (Number.isFinite(min) && min !== '-inf') {
+        qb = qb.andWhere({ score: MoreThanOrEqual(min) })
+      }
+      if (Number.isFinite(max) && max !== '+inf') {
+        qb = qb.andWhere({ score: LessThanOrEqual(max) })
+      }
+    }
+
+    if (limit) {
+      qb = qb.limit(limit)
+    }
+
+    if (relationReversed) {
+      qb = this.dataSource
+        .createQueryBuilder()
+        .addCommonTableExpression(qb, 'base')
+        .from('base', 'base')
+        .addOrderBy('base.score', sort) as SelectQueryBuilder<SortedSetObject>
+    }
+
+    const ret = (await qb.getRawMany<{ member: string; score: number }>()).map(
+      ({ member, score }) => (withScores ? { score, value: member } : member),
+    )
+    return withScores ? (ret as ValueAndScore[]) : (ret as string[])
+  }
+
   getSortedSetRange(
-    key: string,
+    id: string | string[],
     start: number,
     stop: number,
   ): Promise<string[]> {
-    throw new Error('Method not implemented.')
+    return this.getSortedSetRangeInner({
+      byRange: { stop },
+      id,
+      sort: 'ASC',
+      start,
+      withScores: false,
+    })
   }
 
   getSortedSetRangeByLex(
@@ -933,21 +1030,33 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRangeByScoreWithScores(
-    key: string,
+    id: string,
     start: number,
     count: number,
-    min: string,
-    max: number,
-  ): Promise<{ value: string; score: number }[]> {
-    throw new Error('Method not implemented.')
+    min: number | '-inf',
+    max: number | '+inf',
+  ): Promise<ValueAndScore[]> {
+    return this.getSortedSetRangeInner({
+      byScore: { count, max, min },
+      id,
+      sort: 'ASC',
+      start,
+      withScores: true,
+    })
   }
 
   getSortedSetRangeWithScores(
-    key: string,
+    id: string,
     start: number,
     stop: number,
-  ): Promise<{ value: string; score: number }[]> {
-    throw new Error('Method not implemented.')
+  ): Promise<ValueAndScore[]> {
+    return this.getSortedSetRangeInner({
+      byRange: { stop },
+      id,
+      sort: 'ASC',
+      start,
+      withScores: true,
+    })
   }
 
   getSortedSetRevIntersect(params: {
@@ -962,11 +1071,17 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRevRange(
-    key: string,
+    id: string | string[],
     start: number,
     stop: number,
   ): Promise<string[]> {
-    throw new Error('Method not implemented.')
+    return this.getSortedSetRangeInner({
+      byRange: { stop },
+      id,
+      sort: 'DESC',
+      start,
+      withScores: false,
+    })
   }
 
   getSortedSetRevRangeByLex(
@@ -980,31 +1095,49 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRevRangeByScore(
-    key: string,
+    id: string,
     start: number,
     count: number,
-    max: string,
-    min: number,
+    max: number | '+inf',
+    min: number | '-inf',
   ): Promise<string[]> {
-    throw new Error('Method not implemented.')
+    return this.getSortedSetRangeInner({
+      byScore: { count, max, min },
+      id,
+      sort: 'DESC',
+      start,
+      withScores: false,
+    })
   }
 
   getSortedSetRevRangeByScoreWithScores(
-    key: string,
+    id: string,
     start: number,
     count: number,
-    max: string,
-    min: number,
-  ): Promise<{ value: string; score: number }[]> {
-    throw new Error('Method not implemented.')
+    max: number | '+inf',
+    min: number | '-inf',
+  ): Promise<ValueAndScore[]> {
+    return this.getSortedSetRangeInner({
+      byScore: { count, max, min },
+      id,
+      sort: 'DESC',
+      start,
+      withScores: true,
+    })
   }
 
   getSortedSetRevRangeWithScores(
-    key: string,
+    id: string,
     start: number,
     stop: number,
-  ): Promise<{ value: string; score: number }[]> {
-    throw new Error('Method not implemented.')
+  ): Promise<ValueAndScore[]> {
+    return this.getSortedSetRangeInner({
+      byRange: { stop },
+      id,
+      sort: 'DESC',
+      start,
+      withScores: true,
+    })
   }
 
   getSortedSetRevUnion(params: {
