@@ -252,11 +252,13 @@ export class TypeORMDatabaseBackend
   }
 
   async get(id: string): Promise<string | null> {
-    return (
-      await this.getQueryBuildByClassWithLiveObject(StringObject)
-        .where({ id })
-        .getOne()
-    )?.value
+    return String(
+      (
+        await this.getQueryBuildByClassWithLiveObject(StringObject)
+          .where({ id })
+          .getOne()
+      )?.value,
+    )
   }
 
   async set(id: string, value: string): Promise<void> {
@@ -270,13 +272,12 @@ export class TypeORMDatabaseBackend
     const repo = this.dataSource?.getRepository(StringObject)
     const data = await repo?.findOne({ where: { id } })
     if (data) {
-      let value = Number.parseInt(data.value)
-      if (value != null) {
-        value += 1
-        data.value = `${value}`
+      if (typeof data.value === 'number' && Number.isFinite(data.value)) {
+        data.value += 1
+        await repo.update({ id }, data)
+        return data.value
       }
-      await repo.update({ id }, data)
-      return value
+      throw new Error(`Expected number (id=${id})`)
     } else {
       const obj = new StringObject()
       obj.id = id
