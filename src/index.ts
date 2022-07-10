@@ -837,32 +837,7 @@ export class TypeORMDatabaseBackend
     keyOrKeys: string | string[],
     data: Record<string, any>,
   ): Promise<void> {
-    // eslint-disable-next-line no-prototype-builtins
-    if (data.hasOwnProperty('')) {
-      delete data['']
-    }
-    if (!Object.keys(data).length) {
-      return
-    }
-
-    await this.dataSource
-      ?.getRepository(HashObject)
-      .createQueryBuilder()
-      .insert()
-      .orUpdate(['value'], ['id', 'key'])
-      .values(
-        cartesianProduct(
-          !Array.isArray(key) ? [key] : key,
-          Object.entries(data) as any[],
-        ).map(([id, [key, value]]) => {
-          const x = new HashObject()
-          x.id = id
-          x.key = key
-          x.value = value
-          return x
-        }),
-      )
-      .execute()
+    return this.setObjectBulk([[keyOrKeys, data]])
   }
 
   async setObjectBulk(
@@ -874,23 +849,25 @@ export class TypeORMDatabaseBackend
       .insert()
       .orUpdate(['value'], ['id', 'key'])
       .values(
-        args.flatMap(([key, data]) => {
-          // eslint-disable-next-line no-prototype-builtins
-          if (data.hasOwnProperty('')) {
-            delete data['']
-          }
+        args
+          .filter(([__, data]) => Object.keys(data).length > 0)
+          .flatMap(([key, data]) => {
+            // eslint-disable-next-line no-prototype-builtins
+            if (data.hasOwnProperty('')) {
+              delete data['']
+            }
 
-          return cartesianProduct(
-            Array.isArray(key) ? key : [key],
-            Object.entries(data) as any[],
-          ).map(([id, [key, value]]) => {
-            const x = new HashObject()
-            x.id = id
-            x.key = key
-            x.value = value
-            return x
+            return cartesianProduct([
+              Array.isArray(key) ? key : [key],
+              Object.entries(data),
+            ])
           })
-        }),
+          .map(([id, [key, value]]) => ({
+            ...new HashObject(),
+            id,
+            key,
+            value,
+          })),
       )
       .execute()
   }
