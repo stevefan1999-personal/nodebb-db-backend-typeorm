@@ -1267,8 +1267,27 @@ export class TypeORMDatabaseBackend
       .execute()
   }
 
-  sortedSetCount(key: string, min: string, max: number): Promise<number> {
-    throw new Error('Method not implemented.')
+  sortedSetCard(id: string): Promise<number> {
+    return this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+      .where({ id })
+      .getCount()
+  }
+
+  async sortedSetCount(
+    id: string,
+    min: number | '-inf',
+    max: number | '+inf',
+  ): Promise<number> {
+    let baseQuery = this.getQueryBuildByClassWithLiveObject(
+      SortedSetObject,
+    ).where({ id })
+    if (min != '-inf') {
+      baseQuery = baseQuery.andWhere({ score: MoreThanOrEqual(min) })
+    }
+    if (max != '+inf') {
+      baseQuery = baseQuery.andWhere({ score: LessThanOrEqual(max) })
+    }
+    return baseQuery.getCount()
   }
 
   sortedSetIncrBy(
@@ -1285,8 +1304,19 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetIntersectCard(keys: string[]): Promise<number> {
-    throw new Error('Method not implemented.')
+  async sortedSetIntersectCard(ids: string[]): Promise<number> {
+    return (
+      (
+        await this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+          baseAlias: 'z',
+        })
+          .where({ id: In(ids) })
+          .groupBy('z.member')
+          .having('COUNT(*) = :length', { length: ids.length })
+          .select('count(*) over ()', 'c')
+          .getRawOne<{ c: number }>()
+      )?.c ?? 0
+    )
   }
 
   sortedSetLexCount(
@@ -1376,8 +1406,17 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetUnionCard(keys: string[]): Promise<number> {
-    throw new Error('Method not implemented.')
+  async sortedSetUnionCard(id: string[]): Promise<number> {
+    return (
+      (
+        await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+          .where({
+            id: In(id),
+          })
+          .select('COUNT(DISTINCT(member))', 'count')
+          .getRawOne()
+      )?.count ?? 0
+    )
   }
 
   async sortedSetsAdd(
@@ -1405,12 +1444,25 @@ export class TypeORMDatabaseBackend
       .execute()
   }
 
-  sortedSetsCard(keys: string[]): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetsCard(keys: string[]): Promise<number[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({ id: In(keys) })
+        .groupBy('id')
+        .select('id')
+        .addSelect('COUNT(id)', 'count')
+        .getRawMany<Pick<SortedSetObject, 'id'> & { count: number }>(),
+    )
+      .keyBy('id')
+      .mapValues('count')
+      .thru((x) => keys.map((key) => x[key] ?? 0))
+      .value()
   }
 
-  sortedSetsCardSum(keys: string[]): Promise<number> {
-    throw new Error('Method not implemented.')
+  async sortedSetsCardSum(ids: string[]): Promise<number> {
+    return this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+      .where({ id: In(ids) })
+      .getCount()
   }
 
   async sortedSetsRanks<T extends readonly [] | readonly string[]>(
