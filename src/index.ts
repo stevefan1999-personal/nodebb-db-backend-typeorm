@@ -1297,12 +1297,44 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetRank(key: string, value: string): Promise<number> {
-    throw new Error('Method not implemented.')
+  async getSortedSetRankInner(
+    sort: 'ASC' | 'DESC',
+    ids: string[],
+    members: string[],
+  ): Promise<(Pick<SortedSetObject, 'id' | 'member'> & { rank: number })[]> {
+    return this.dataSource
+      ?.createQueryBuilder()
+      .from((sq) => {
+        return this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+          baseAlias: 'z',
+          liveObjectAlias: 'l',
+          queryBuilder: sq.from(SortedSetObject, 'z'),
+        })
+          .addSelect('l.id', 'id')
+          .addSelect('z.member', 'member')
+          .addSelect(
+            `RANK() OVER (PARTITION BY l.id ORDER BY z.score ${sort}, z.member ${sort}) - 1`,
+            'rank',
+          )
+      }, 'gr') // global rank
+      .select(['gr.id', 'gr.member', 'gr.rank'])
+      .where({ id: In(ids), member: In(members) })
+      .getRawMany<Pick<SortedSetObject, 'id' | 'member'> & { rank: number }>()
   }
 
-  sortedSetRanks(key: string, values: string[]): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetRank(id: string, member: string): Promise<number> {
+    return (
+      (await this.getSortedSetRankInner('ASC', [id], [member]))?.[0]?.rank ??
+      null
+    )
+  }
+
+  async sortedSetRanks(id: string, members: string[]): Promise<number[]> {
+    return _.chain(await this.getSortedSetRankInner('ASC', [id], members))
+      .keyBy('member')
+      .mapValues('rank')
+      .thru((x) => members.map((member) => x[member] ?? null))
+      .value()
   }
 
   sortedSetRemove(key: string, value: string): Promise<void> {
@@ -1321,12 +1353,19 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetRevRank(key: string, value: string): Promise<number> {
-    throw new Error('Method not implemented.')
+  async sortedSetRevRank(id: string, member: string): Promise<number> {
+    return (
+      (await this.getSortedSetRankInner('DESC', [id], [member]))?.[0]?.rank ??
+      null
+    )
   }
 
-  sortedSetRevRanks(key: string, values: string[]): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetRevRanks(id: string, members: string[]): Promise<number[]> {
+    return _.chain(await this.getSortedSetRankInner('DESC', [id], members))
+      .keyBy('member')
+      .mapValues('rank')
+      .thru(mapper((x, member) => x[member] ?? null, members))
+      .value()
   }
 
   sortedSetScore(key: string, value: string): Promise<number> {
@@ -1374,8 +1413,23 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetsRanks(keys: string[], values: string[]): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetsRanks<T extends readonly [] | readonly string[]>(
+    ids: T,
+    members: { [K in keyof T]: any },
+  ): Promise<number[]> {
+    return _.chain(
+      await this.getSortedSetRankInner(
+        'ASC',
+        ids as string[],
+        members as string[],
+      ),
+    )
+      .groupBy('id')
+      .mapValues((x) => _.chain(x).keyBy('member').mapValues('rank').value())
+      .thru((x) =>
+        _.zip(ids, members).map(([id, member]) => x[id]?.[member] ?? null),
+      )
+      .value()
   }
 
   sortedSetsRemove(keys: string[], value: string): Promise<void> {
@@ -1390,8 +1444,20 @@ export class TypeORMDatabaseBackend
     throw new Error('Method not implemented.')
   }
 
-  sortedSetsRevRanks(keys: string[], values: string[]): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetsRevRanks(
+    ids: string[],
+    members: string[],
+  ): Promise<number[]> {
+    return _.chain(await this.getSortedSetRankInner('DESC', ids, members))
+      .groupBy('id')
+      .mapValues((x) => _.chain(x).keyBy('member').mapValues('rank').value())
+      .thru(
+        mapper(
+          (data, [id, member]) => data[id][member] ?? null,
+          cartesianProduct([ids, members]),
+        ),
+      )
+      .value()
   }
 
   sortedSetsScore(keys: string[], value: string): Promise<number[]> {
