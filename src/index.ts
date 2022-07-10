@@ -221,7 +221,7 @@ export class TypeORMDatabaseBackend
           .getMany(),
       )
         .keyBy('id')
-        .thru((data) => id.map((x) => x in data))
+        .thru(mapper((data, id) => id in data, idOrIds))
         .value()
     } else if (typeof id === 'string') {
       return ((await repo?.countBy({ id })) ?? 0) > 0
@@ -403,7 +403,7 @@ export class TypeORMDatabaseBackend
         .getMany(),
     )
       .keyBy('member')
-      .thru((data) => members.map((member) => member in data))
+      .thru(mapper((data, member) => member in data, members))
       .value()
   }
 
@@ -417,7 +417,7 @@ export class TypeORMDatabaseBackend
         .getMany(),
     )
       .keyBy('id')
-      .thru((data) => ids.map((set) => set in data))
+      .thru(mapper((x, id) => id in x, ids))
       .value()
   }
 
@@ -451,7 +451,7 @@ export class TypeORMDatabaseBackend
     )
       .groupBy('id')
       .mapValues((x) => _.map(x, 'member'))
-      .thru((data) => ids.map((key) => data[key] ?? []))
+      .thru(mapper((data, key) => data[key] ?? [], ids))
       .value()
   }
 
@@ -469,7 +469,7 @@ export class TypeORMDatabaseBackend
     )
       .keyBy('id')
       .mapValues('count')
-      .thru((data) => ids.map((key) => data[key] ?? 0))
+      .thru(mapper((x, id) => x[id] ?? 0, ids))
       .value()
   }
 
@@ -782,7 +782,7 @@ export class TypeORMDatabaseBackend
           ),
         )
           .keyBy('id')
-          .thru((x) => idOrIds.map((k) => x[k]?.value ?? -1))
+          .thru(mapper((data, id) => data[id]?.value ?? -1, idOrIds))
           .value()
       } else {
         return (
@@ -834,7 +834,7 @@ export class TypeORMDatabaseBackend
         .getMany(),
     )
       .keyBy('key')
-      .thru((x) => keys.map((key) => key in x))
+      .thru(mapper((x, key) => key in x, keys))
       .value()
   }
 
