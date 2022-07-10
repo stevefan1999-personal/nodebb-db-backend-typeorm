@@ -1398,12 +1398,27 @@ export class TypeORMDatabaseBackend
       .value()
   }
 
-  sortedSetScore(key: string, value: string): Promise<number> {
-    throw new Error('Method not implemented.')
+  async sortedSetScore(id: string, member: string): Promise<number | null> {
+    return (
+      (
+        await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+          .where({ id, member })
+          .getOne()
+      )?.score ?? null
+    )
   }
 
-  sortedSetScores(key: string, values: string[]): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetScores(id: string, members: string[]): Promise<number[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({ id, member: In(members) })
+        .select(['member', 'score'])
+        .getRawMany<Pick<SortedSetObject, 'member' | 'score'>>(),
+    )
+      .keyBy('member')
+      .mapValues('score')
+      .thru((x) => members.map((member) => x[member] ?? null))
+      .value()
   }
 
   async sortedSetUnionCard(id: string[]): Promise<number> {
