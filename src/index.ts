@@ -886,15 +886,106 @@ export class TypeORMDatabaseBackend
 
   // Implement SortedSetQueryable
   getSortedSetIntersect(
-    _params: SortedSetTheoryOperation & { withScores: false },
+    params: SortedSetTheoryOperation & { withScores: false },
   ): Promise<string[]>
   getSortedSetIntersect(
-    _params: SortedSetTheoryOperation & { withScores: true },
+    params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
-  getSortedSetIntersect(
-    _params: SortedSetTheoryOperation & { withScores?: boolean },
-  ): Promise<ValueAndScore[] | string[]> {
-    throw new Error('Method not implemented.')
+  async getSortedSetIntersect({
+    withScores,
+    ...params
+  }: SortedSetTheoryOperation & {
+    withScores?: boolean
+  }): Promise<ValueAndScore[] | string[]> {
+    return withScores
+      ? this.getSortedSetIntersectHelper({
+          ...params,
+          sort: 'ASC',
+          withScores: true,
+        })
+      : this.getSortedSetIntersectHelper({
+          ...params,
+          sort: 'ASC',
+          withScores: false,
+        })
+  }
+
+  private static aggregateFunctionTable = {
+    MAX: _.maxBy,
+    MIN: _.minBy,
+    SUM: _.sumBy,
+  }
+  getSortedSetIntersectHelper(
+    params: SortedSetTheoryOperation & { withScores: false },
+  ): Promise<string[]>
+  getSortedSetIntersectHelper(
+    params: SortedSetTheoryOperation & { withScores: true },
+  ): Promise<ValueAndScore[]>
+  async getSortedSetIntersectHelper({
+    sets,
+    weights = [],
+    aggregate = 'SUM',
+    sort,
+    start = 0,
+    stop = -1,
+    withScores = false,
+  }: SortedSetTheoryOperation & {
+    withScores?: boolean
+  }): Promise<ValueAndScore[] | string[]> {
+    if (sets.length < weights.length) {
+      weights = weights.slice(0, sets.length)
+    }
+    while (sets.length > weights.length) {
+      weights.push(1)
+    }
+
+    const weightMap = Object.fromEntries(_.zip(sets, weights))
+    let x = _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+        baseAlias: 'z',
+      })
+        .where({ id: In(sets) })
+        .innerJoinAndSelect(
+          (qb) =>
+            this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+              baseAlias: 'z1',
+              queryBuilder: qb.from(SortedSetObject, 'z1'),
+            })
+              .where({ id: In(sets) })
+              .groupBy('z1.member')
+              .having('COUNT(*) = :n', { n: sets.length }),
+          'z1',
+          'z.member = z1.member',
+        )
+        .select('z.id', 'id')
+        .addSelect('z.member', 'member')
+        .addSelect('z.score', 'score')
+        .getRawMany<{
+          id: string
+          member: string
+          score: number
+        }>(),
+    )
+      .forEach((row) => (row.score *= weightMap[row.id]))
+      .groupBy('member')
+      .mapValues((x) =>
+        TypeORMDatabaseBackend.aggregateFunctionTable[aggregate](x, 'score'),
+      )
+      .entries()
+      .map(([value, score]) => ({
+        score,
+        value,
+      }))
+      .orderBy('score', sort === 'ASC' ? 'asc' : 'desc')
+      .drop(start)
+
+    const limit = stop - start + 1
+    if (limit) {
+      x = x.take(limit)
+    }
+    return withScores
+      ? (x.value() as ValueAndScore[])
+      : x.map(({ value }) => value).value()
   }
 
   async getSortedSetRangeInner(
@@ -1020,15 +1111,28 @@ export class TypeORMDatabaseBackend
   }
 
   getSortedSetRevIntersect(
-    _params: SortedSetTheoryOperation & { withScores: true },
+    params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
   getSortedSetRevIntersect(
-    _params: SortedSetTheoryOperation & { withScores: false },
+    params: SortedSetTheoryOperation & { withScores: false },
   ): Promise<string[]>
-  getSortedSetRevIntersect(
-    _params: SortedSetTheoryOperation & { withScores?: boolean },
-  ): Promise<string[] | ValueAndScore[]> {
-    throw new Error('Method not implemented.')
+  getSortedSetRevIntersect({
+    withScores,
+    ...params
+  }: SortedSetTheoryOperation & { withScores?: boolean }): Promise<
+    string[] | ValueAndScore[]
+  > {
+    return withScores
+      ? this.getSortedSetIntersectHelper({
+          ...params,
+          sort: 'DESC',
+          withScores: true,
+        })
+      : this.getSortedSetIntersectHelper({
+          ...params,
+          sort: 'DESC',
+          withScores: false,
+        })
   }
 
   getSortedSetRevRange(
