@@ -314,8 +314,12 @@ export class TypeORMDatabaseBackend
     await repo?.update({ id: oldId }, { id: newId })
   }
 
-  type(id: string): Promise<ObjectType> {
-    throw new Error('Method not implemented.')
+  async type(id: string): Promise<ObjectType> {
+    return (
+      await this.getQueryBuildByClassWithLiveObject(DbObjectLive)
+        .where({ id })
+        .getOne()
+    )?.type
   }
 
   async expireInner(id: string, expireAt: Date): Promise<void> {
