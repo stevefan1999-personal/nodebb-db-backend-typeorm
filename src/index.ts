@@ -211,19 +211,36 @@ export class TypeORMDatabaseBackend
   async exists(ids: string[]): Promise<boolean[]>
   async exists(idOrIds: string | string[]): Promise<boolean | boolean[]> {
     const repo = this.dataSource?.getRepository(DbObjectLive)
-    if (Array.isArray(id)) {
-      return _.chain(
-        await repo
-          ?.createQueryBuilder('o')
-          .where({ id: In(id) })
-          .select('o.id')
-          .getMany(),
+
+    const ifSortedSetHasMembers = async (id: string): Promise<boolean> =>
+      (await this.type(id)) !== ObjectType.SORTED_SET ||
+      (await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({ id })
+        .getCount()) > 0
+
+    if (Array.isArray(idOrIds)) {
+      return Promise.all(
+        _.chain(
+          await repo
+            ?.createQueryBuilder()
+            .where({ id: In(idOrIds) })
+            .select('id')
+            .getRawMany<Pick<DbObjectLive, 'id'>>(),
+        )
+          .keyBy('id')
+          .thru(
+            mapper(
+              async (data, id) => id in data && ifSortedSetHasMembers(id),
+              idOrIds,
+            ),
+          )
+          .value(),
       )
-        .keyBy('id')
-        .thru(mapper((data, id) => id in data, idOrIds))
-        .value()
-    } else if (typeof id === 'string') {
-      return ((await repo?.countBy({ id })) ?? 0) > 0
+    } else if (typeof idOrIds === 'string') {
+      return (
+        ((await repo?.countBy({ id: idOrIds })) ?? 0) > 0 &&
+        ifSortedSetHasMembers(idOrIds)
+      )
     }
     throw new Error('unexpected type')
   }
