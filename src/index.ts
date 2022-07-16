@@ -547,92 +547,73 @@ export class TypeORMDatabaseBackend
   }
 
   // Implement ListQueryable
-  listPrepend(id: string, value: string): Promise<void> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
-      const obj =
-        (await em.getRepository(ListObject).findOne({ where: { id } })) ??
-        _.thru(new ListObject(), (l) => {
-          l.id = id
-          return l
-        })
-      obj.array = [value, ...obj.array]
-      await obj.save()
-    })
-  }
 
-  listAppend(id: string, value: string): Promise<void> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
-      const obj =
-        (await em.getRepository(ListObject).findOne({ where: { id } })) ??
-        _.thru(new ListObject(), (l) => {
-          l.id = id
-          return l
-        })
-      obj.array = [...obj.array, value]
-      await obj.save()
-    })
-  }
-
-  listRemoveLast(id: string): Promise<any> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
-      const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
-        em,
+  async listPrepend(id: string, value: string): Promise<void> {
+    const obj =
+      (await this.dataSource
+        .getRepository(ListObject)
+        .findOne({ where: { id } })) ??
+      _.thru(new ListObject(), (l) => {
+        l.id = id
+        return l
       })
+    obj.array = [value, ...obj.array]
+    await obj.save()
+  }
+
+  async listAppend(id: string, value: string): Promise<void> {
+    const obj =
+      (await this.dataSource
+        .getRepository(ListObject)
+        .findOne({ where: { id } })) ??
+      _.thru(new ListObject(), (l) => {
+        l.id = id
+        return l
+      })
+    obj.array = [...obj.array, value]
+    await obj.save()
+  }
+
+  async listRemoveLast(id: string): Promise<any> {
+    const obj = await this.getQueryBuildByClassWithLiveObject(ListObject)
+      .where({ id })
+      .getOneOrFail()
+    const ret = obj.array.pop()
+    await obj.save()
+    return ret
+  }
+
+  async listRemoveAll(id: string, value: string | string[]): Promise<void> {
+    const obj = await this.getQueryBuildByClassWithLiveObject(ListObject)
+      .where({ id })
+      .getOneOrFail()
+    obj.array = _.without(obj.array, value)
+    await obj.save()
+  }
+
+  async listTrim(id: string, start: number, stop: number): Promise<void> {
+    const obj = await this.getQueryBuildByClassWithLiveObject(ListObject)
+      .where({ id })
+      .getOneOrFail()
+    obj.array.splice(start, stop - start + (stop < 0 ? obj.array.length : 0))
+    await obj.save()
+  }
+
+  async getListRange(id: string, start: number, stop: number): Promise<any[]> {
+    return (
+      await this.getQueryBuildByClassWithLiveObject(ListObject)
         .where({ id })
         .getOneOrFail()
-      const ret = obj.array.pop()
-      await obj.save()
-      return ret
-    })
+    ).array.slice(start, stop)
   }
 
-  listRemoveAll(id: string, value: string | string[]): Promise<void> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
-      const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
-        em,
-      })
-        .where({ id })
-        .getOneOrFail()
-      obj.array = _.without(obj.array, value)
-      await obj.save()
-    })
-  }
-
-  listTrim(id: string, start: number, stop: number): Promise<void> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
-      const obj = await this.getQueryBuildByClassWithLiveObject(ListObject, {
-        em,
-      })
-        .where({ id })
-        .getOneOrFail()
-      obj.array.splice(start, stop - start + (stop < 0 ? obj.array.length : 0))
-      await obj.save()
-    })
-  }
-
-  getListRange(id: string, start: number, stop: number): Promise<any[]> {
-    return this.dataSource?.transaction('SERIALIZABLE', async (em) => {
-      return (
-        await this.getQueryBuildByClassWithLiveObject(ListObject, {
-          em,
-        })
+  async listLength(id: string): Promise<number> {
+    return (
+      (
+        await this.getQueryBuildByClassWithLiveObject(ListObject)
           .where({ id })
-          .getOneOrFail()
-      ).array.slice(start, stop)
-    })
-  }
-
-  listLength(id: string): Promise<number> {
-    return this.dataSource?.transaction(
-      'SERIALIZABLE',
-      async (em) =>
-        (
-          await this.getQueryBuildByClassWithLiveObject(ListObject, {
-            em,
-          })
-            .where({ id })
-            .getOneOrFail()
-        ).array.length,
+          .getOne()
+      )?.array.length ?? 0
     )
   }
 
