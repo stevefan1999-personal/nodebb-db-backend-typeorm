@@ -289,18 +289,17 @@ export class TypeORMDatabaseBackend
   }
 
   async scan({ match }: { match: RedisStyleMatchString }): Promise<string[]> {
-    return _.chain(
+    return _.map(
       await this.dataSource
         ?.getRepository(DbObjectLive)
-        ?.createQueryBuilder('s')
+        ?.createQueryBuilder()
         .where({
           id: Like(convertRedisStyleMatchToSqlWildCard(match)[0]),
         })
-        .select('s.id')
-        .getMany(),
+        .select('id')
+        .getRawMany<Pick<DbObjectLive, 'id'>>(),
+      'id',
     )
-      .map('id')
-      .value()
   }
 
   async delete(id: string): Promise<void> {
@@ -481,16 +480,15 @@ export class TypeORMDatabaseBackend
   }
 
   async getSetMembers(id: string): Promise<string[]> {
-    return _.chain(
+    return _.map(
       await this.getQueryBuildByClassWithLiveObject(HashSetObject, {
         baseAlias: 's',
       })
         .where({ id })
-        .select('s.member')
-        .getMany(),
+        .select('s.member', 'member')
+        .getRawMany<Pick<HashSetObject, 'member'>>(),
+      'member',
     )
-      .map('member')
-      .value()
   }
 
   setCount(id: string): Promise<number> {
@@ -690,26 +688,25 @@ export class TypeORMDatabaseBackend
   }
 
   async getObjectKeys(id: string): Promise<string[]> {
-    return _.chain(
+    return _.map(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
         .where({ id })
-        .select(['h.key'])
-        .getMany(),
+        .select('h.key', 'key')
+        .getRawMany<Pick<HashObject, 'key'>>(),
+      'key',
     )
-      .map('key')
-      .value()
   }
 
   async getObjectValues(id: string): Promise<any[]> {
-    return _.chain(
+    return _.map(
       await this.getQueryBuildByClassWithLiveObject(HashObject, {
         baseAlias: 'h',
       })
         .where({ id })
-        .select(['h.value'])
         .getMany(),
+      'value',
     )
   }
 
