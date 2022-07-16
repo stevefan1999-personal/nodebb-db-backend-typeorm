@@ -1155,21 +1155,48 @@ export class TypeORMDatabaseBackend
           'member',
         )
   }
-
   getSortedSetScan(
     params: SortedSetScanBaseParameters & { withScores: true },
   ): Promise<ValueAndScore[]>
-  getSortedSetScan(
-    params: SortedSetScanBaseParameters & { withScores: false },
-  ): Promise<string[]>
-  getSortedSetScan(
-    _params: SortedSetScanBaseParameters & {
-      withScores?: boolean
-    },
-  ): Promise<string[] | ValueAndScore[]> {
-    throw new Error('Method not implemented.')
-  }
 
+  getSortedSetScan(
+    params: SortedSetScanBaseParameters & { withScores?: false },
+  ): Promise<string[]>
+  async getSortedSetScan({
+    key,
+    match,
+    limit,
+    withScores,
+  }: SortedSetScanBaseParameters & {
+    withScores?: boolean
+  }): Promise<string[] | ValueAndScore[]> {
+    let baseQuery = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+      baseAlias: 'z',
+    }).where({
+      id: key,
+      member: Like(convertRedisStyleMatchToSqlWildCard(match)[0]),
+    })
+
+    baseQuery =
+      (limit > 0
+        ? baseQuery.limit(limit)
+        : databasePersonality[this.databaseType]?.quirks?.fixLimit?.(
+            baseQuery,
+          )) ?? baseQuery
+
+    if (withScores) {
+      return baseQuery
+        .select('z.member', 'value')
+        .addSelect('z.score', 'score')
+        .getRawMany<ValueAndScore>()
+    }
+    return _.map(
+      await baseQuery
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
+  }
   getSortedSetUnion(
     params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
