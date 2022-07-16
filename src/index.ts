@@ -1200,13 +1200,53 @@ export class TypeORMDatabaseBackend
   getSortedSetUnion(
     params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
+
   getSortedSetUnion(
-    params: SortedSetTheoryOperation & { withScores: false },
+    params: SortedSetTheoryOperation & { withScores?: false },
   ): Promise<string[]>
-  getSortedSetUnion(
-    _params: SortedSetTheoryOperation & { withScores?: boolean },
-  ): Promise<string[] | ValueAndScore[]> {
-    throw new Error('Method not implemented.')
+  async getSortedSetUnion({
+    aggregate,
+    sets,
+    start,
+    stop,
+    weights,
+    withScores,
+  }: SortedSetTheoryOperation & { withScores?: boolean }): Promise<
+    string[] | ValueAndScore[]
+  > {
+    const baseQuery = this.getSortedSetUnionBaseQuery({
+      aggregate,
+      sets,
+      sort: 'ASC',
+      start,
+      stop,
+      weights,
+    })
+
+    return withScores
+      ? baseQuery.addSelect('z.member', 'value').getRawMany<ValueAndScore>()
+      : _.map(
+          await baseQuery
+            .select('z.member', 'member')
+            .getRawMany<Pick<SortedSetObject, 'member'>>(),
+          'member',
+        )
+  }
+  async getSortedSetsMembers(ids: string[]): Promise<string[][]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+        baseAlias: 'z',
+      })
+        .where({ id: In(ids) })
+        .addGroupBy('z.id')
+        .addGroupBy('z.member')
+        .addOrderBy('z.score', 'ASC')
+        .getMany(),
+    )
+      .groupBy('id')
+      .mapValues((x) => _.chain(x).map('member').orderBy('score').value())
+      .thru(mapper((data, id) => data[id] ?? [], ids))
+      .value()
   }
 
   getSortedSetsMembers(keys: string[]): Promise<string[]> {
