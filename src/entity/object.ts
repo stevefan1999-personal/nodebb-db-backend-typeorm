@@ -32,6 +32,7 @@ export class DbObject {
 
   @PrimaryColumn({
     enum: ObjectType,
+    enumName: 'object_type',
     type: 'simple-enum',
   })
   type: ObjectType
@@ -107,6 +108,7 @@ export class DbObjectLive {
 
   @PrimaryColumn({
     enum: ObjectType,
+    enumName: 'object_type',
     type: 'simple-enum',
   })
   type: ObjectType

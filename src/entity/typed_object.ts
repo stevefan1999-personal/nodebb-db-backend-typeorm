@@ -19,6 +19,7 @@ export const TypedObject = (type: ObjectType) => {
     @Column({
       default: type,
       enum: ObjectType,
+      enumName: 'object_type',
       type: 'simple-enum',
     })
     @Check(`"type" = '${type}'`)
