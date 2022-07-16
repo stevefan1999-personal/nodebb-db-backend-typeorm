@@ -82,6 +82,13 @@ type getSortedSetRangeInnerParams = {
         count: number
       }
     }
+  | {
+      byLex: {
+        min?: RedisStyleRangeString | '-'
+        max?: RedisStyleRangeString | '+'
+        count?: number
+      }
+    }
 )
 
 export class TypeORMDatabaseBackend
@@ -1035,14 +1042,28 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  getSortedSetRangeByLex(
-    _key: string,
-    _min: RedisStyleRangeString,
-    _max: RedisStyleRangeString,
-    _start: number,
-    _count: number,
+  async getSortedSetRangeByLex(
+    id: string,
+    min: RedisStyleRangeString | '-',
+    max: RedisStyleRangeString | '+',
+    start?: number,
+    count?: number,
   ): Promise<string[]> {
-    throw new Error('Method not implemented.')
+    return _.map(
+      await this.getSortedSetRangeBaseQuery({
+        byLex: {
+          count,
+          max,
+          min,
+        },
+        id,
+        sort: 'ASC',
+        start,
+      })
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
   }
 
   getSortedSetRangeByScore(
@@ -1130,14 +1151,24 @@ export class TypeORMDatabaseBackend
     })
   }
 
-  getSortedSetRevRangeByLex(
-    _key: string,
-    _max: RedisStyleRangeString,
-    _min: RedisStyleRangeString,
-    _start: number,
-    _count: number,
+  async getSortedSetRevRangeByLex(
+    id: string,
+    max: RedisStyleRangeString | '+',
+    min: RedisStyleRangeString | '-',
+    start?: number,
+    count?: number,
   ): Promise<string[]> {
-    throw new Error('Method not implemented.')
+    return _.map(
+      await this.getSortedSetRangeBaseQuery({
+        byLex: { count, max, min },
+        id,
+        sort: 'DESC',
+        start,
+      })
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
   }
 
   getSortedSetRevRangeByScore(
