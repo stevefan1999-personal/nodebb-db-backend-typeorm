@@ -493,44 +493,18 @@ export class TypeORMDatabaseBackend
       .value()
   }
 
-  setRemoveRandom(id: string): Promise<string> {
-    return this.dataSource?.transaction(async (em) => {
-      const victim = await this.getQueryBuildByClassWithLiveObject(
-        HashSetObject,
-      )
-        .where({ id })
-        .orderBy('RANDOM()')
-        .getOne()
-      if (victim) {
-        await em
-          .getRepository(HashSetObject)
-          .delete(_.pick(victim, ['id', 'member']))
-      }
-      return victim?.member
-    })
-  }
-
-  private getQueryBuildByClassWithLiveObject<T>(
-    klass: { new (): T },
-    {
-      baseAlias = 'b',
-      liveObjectAlias = 'lo',
-      em = this.dataSource?.manager,
-      repo = em?.getRepository(klass),
-      queryBuilder = repo?.createQueryBuilder(baseAlias),
-    }: {
-      baseAlias?: string
-      liveObjectAlias?: string
-      em?: EntityManager
-      repo?: Repository<T>
-      queryBuilder?: SelectQueryBuilder<T>
-    } = {},
-  ): SelectQueryBuilder<T> | null {
-    return queryBuilder?.innerJoin(
-      DbObjectLive,
-      liveObjectAlias,
-      `${liveObjectAlias}.id = ${baseAlias}.id`,
-    )
+  async setRemoveRandom(id: string): Promise<string> {
+    const victim = await this.getQueryBuildByClassWithLiveObject(HashSetObject)
+      .where({ id })
+      .orderBy(
+        databasePersonality[this.databaseType]?.quirks?.specialFunction
+          ?.random ?? 'RANDOM()',
+      ) // Educated guess
+      .getOne()
+    await this.dataSource
+      ?.getRepository(HashSetObject)
+      .delete(_.pick(victim, ['id', 'member']))
+    return victim?.member
   }
 
   // Implement ListQueryable
@@ -717,27 +691,6 @@ export class TypeORMDatabaseBackend
         .select(['h.value'])
         .getMany(),
     )
-      .map('value')
-      .value()
-  }
-
-  async getObjectsInner(ids: string[], keys: string[]): Promise<any[]> {
-    if (!(Array.isArray(ids) && ids.length > 0)) {
-      return []
-    }
-
-    let qb = this.getQueryBuildByClassWithLiveObject(HashObject, {
-      baseAlias: 'h',
-    }).where({ id: In(ids) })
-    if (Array.isArray(keys) && keys.length > 0) {
-      qb = qb.andWhere({ key: In(keys) })
-    }
-
-    return _.chain(await qb.select(['h.id', 'h.key', 'h.value']).getMany())
-      .groupBy('id')
-      .mapValues((x) => _.chain(x).keyBy('key').mapValues('value').value())
-      .thru(mapper((x, id) => x[id] ?? {}, ids))
-      .value()
   }
 
   getObjects(ids: string[], keys: string[] = []): Promise<any[]> {
@@ -756,31 +709,6 @@ export class TypeORMDatabaseBackend
     key: string,
   ): Promise<number | number[]> {
     return this.incrObjectFieldBy(idOrIds, key, 1)
-  }
-
-  async incrObjectFieldHelper(
-    repo: Repository<HashObject>,
-    id: string,
-    key: string,
-    incrValue: number,
-  ): Promise<HashObject> {
-    const data =
-      (await repo.findOne({
-        where: {
-          id,
-          key,
-        },
-      })) ??
-      _.thru(new HashObject(), (x) => {
-        x.id = id
-        x.key = key
-        x.value = 0
-        return x
-      })
-    if (Number.isFinite(data.value)) {
-      data.value += incrValue
-    }
-    return data
   }
 
   incrObjectFieldBy(
@@ -1622,4 +1550,169 @@ export class TypeORMDatabaseBackend
   sortedSetsScore(keys: string[], value: string): Promise<number[]> {
     throw new Error('Method not implemented.')
   }
+  private getSortedSetUnionBaseQuery({
+    sets,
+    weights = [],
+    aggregate = 'SUM',
+    start = 0,
+    stop = -1,
+    sort,
+  }: SortedSetTheoryOperation): SelectQueryBuilder<SortedSetObject> {
+    const isPostgres = this.databaseType === PopularDatabaseType.Postgres
+
+    if (sets.length < weights.length) {
+      weights = weights.slice(0, sets.length)
+    }
+    while (sets.length > weights.length) {
+      weights.push(1)
+    }
+
+    const dotEntries = _.zip(sets, weights)
+    const cases = dotEntries
+      .map((__, i) => {
+        // Postgres related quirks
+        if (isPostgres) {
+          return `WHEN z.id = :i_${i} THEN :w_${i}::NUMERIC`
+        }
+        return `WHEN z.id = :i_${i} THEN :w_${i}`
+      })
+      .join(' ')
+    const baseQuery = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+      baseAlias: 'z',
+    })
+      .setParameters(
+        _.chain(dotEntries)
+          .map(([set, weight], i) => [
+            [`i_${i}`, set],
+            [`w_${i}`, weight],
+          ])
+          .flatten()
+          .fromPairs()
+          .value(),
+      )
+      .where({ id: In(sets) })
+      .groupBy('z.member')
+      .select(`${aggregate}(z.score * CASE ${cases} END)`, 'score')
+      .orderBy('score', sort)
+      .offset(start)
+    const limit = stop - start + 1
+
+    return (
+      (limit > 0
+        ? baseQuery.limit(limit)
+        : databasePersonality[this.databaseType]?.quirks?.fixLimit?.(
+            baseQuery,
+          )) ?? baseQuery
+    )
+  }
+
+  private async incrObjectFieldHelper(
+    repo: Repository<HashObject>,
+    id: string,
+    key: string,
+    incrValue: number,
+  ): Promise<HashObject> {
+    const data =
+      (await repo.findOne({
+        where: {
+          id,
+          key,
+        },
+      })) ??
+      _.thru(new HashObject(), (x) => {
+        x.id = id
+        x.key = key
+        x.value = 0
+        return x
+      })
+    if (Number.isFinite(data.value)) {
+      data.value += incrValue
+    }
+    return data
+  }
+
+  private getSortedSetRangeBaseQuery({
+    id,
+    sort,
+    start = 0,
+    ...rest
+  }: getSortedSetRangeInnerParams): SelectQueryBuilder<SortedSetObject> {
+    let limit: number
+    let baseQuery = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+      baseAlias: 'z',
+    })
+      .where({
+        id: Array.isArray(id) ? In(id) : id,
+      })
+      .addOrderBy('z.score', sort)
+
+    if ('byRange' in rest) {
+      let offset: number
+      ;({ offset, limit } = fixRange(start, rest.byRange.stop))
+      baseQuery = baseQuery.offset(offset)
+    } else if ('byScore' in rest) {
+      const { min, max, count } = rest.byScore
+      limit = count
+      baseQuery = baseQuery.offset(start)
+      if (Number.isFinite(min) && min !== '-inf') {
+        baseQuery = baseQuery.andWhere({ score: MoreThanOrEqual(min) })
+      }
+      if (Number.isFinite(max) && max !== '+inf') {
+        baseQuery = baseQuery.andWhere({ score: LessThanOrEqual(max) })
+      }
+    } else if ('byLex' in rest) {
+      const { min, max, count } = rest.byLex
+      limit = count
+      baseQuery = baseQuery.orderBy('z.member', sort).offset(start)
+      // Educated guess
+      const collate =
+        databasePersonality[this.databaseType]?.quirks?.collation?.binary ??
+        'BINARY'
+      if (min !== '-') {
+        const [operator, params] =
+          convertRedisStyleRangeStringToTypeormCriterion(min, 'min')
+
+        baseQuery = baseQuery.andWhere(
+          `z.member ${operator} COLLATE ${collate}`,
+          params,
+        )
+      }
+      if (max !== '+') {
+        const [operator, params] =
+          convertRedisStyleRangeStringToTypeormCriterion(max, 'max')
+        baseQuery = baseQuery.andWhere(
+          `z.member ${operator} COLLATE ${collate}`,
+          params,
+        )
+      }
+    }
+    return (
+      (limit > 0
+        ? baseQuery.limit(limit)
+        : databasePersonality[this.databaseType]?.quirks?.fixLimit?.(
+            baseQuery,
+          )) ?? baseQuery
+    )
+  }
+
+  async getObjectsInner(ids: string[], keys: string[]): Promise<any[]> {
+    if (!(Array.isArray(ids) && ids.length > 0)) {
+      return []
+    }
+
+    let qb = this.getQueryBuildByClassWithLiveObject(HashObject, {
+      baseAlias: 'h',
+    }).where({ id: In(ids) })
+    if (Array.isArray(keys) && keys.length > 0) {
+      qb = qb.andWhere({ key: In(keys) })
+    }
+
+    return _.chain(await qb.select(['h.id', 'h.key', 'h.value']).getMany())
+      .groupBy('id')
+      .mapValues((x) => _.chain(x).keyBy('key').mapValues('value').value())
+      .thru(mapper((x, id) => x[id] ?? {}, ids))
+      .value()
+  }
 }
+
+export { SessionStore }
