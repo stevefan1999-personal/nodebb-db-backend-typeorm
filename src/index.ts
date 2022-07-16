@@ -1404,25 +1404,33 @@ export class TypeORMDatabaseBackend
     sort: 'ASC' | 'DESC',
     ids: string[],
     members: string[],
-  ): Promise<(Pick<SortedSetObject, 'id' | 'member'> & { rank: number })[]> {
-    return this.dataSource
-      ?.createQueryBuilder()
-      .from((sq) => {
-        return this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
-          baseAlias: 'z',
-          liveObjectAlias: 'l',
-          queryBuilder: sq.from(SortedSetObject, 'z'),
-        })
-          .addSelect('l.id', 'id')
-          .addSelect('z.member', 'member')
-          .addSelect(
-            `RANK() OVER (PARTITION BY l.id ORDER BY z.score ${sort}, z.member ${sort}) - 1`,
-            'rank',
-          )
-      }, 'gr') // global rank
-      .select(['gr.id', 'gr.member', 'gr.rank'])
-      .where({ id: In(ids), member: In(members) })
-      .getRawMany<Pick<SortedSetObject, 'id' | 'member'> & { rank: number }>()
+  ): Promise<
+    (Pick<SortedSetObject, 'id' | 'member'> & { rank: number | string })[]
+  > {
+    const cmp = sort === 'ASC' ? '>' : '<'
+    let baseQuery = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+      baseAlias: 'z',
+    })
+    const [orderScore, orderMember] = [
+      `z.score ${cmp} z1.score`,
+      `z.score = z1.score and z.member ${cmp} z1.member`,
+    ]
+
+    baseQuery = baseQuery
+      .leftJoinAndSelect(
+        SortedSetObject,
+        'z1',
+        `z.id = z1.id and ((${orderScore}) or (${orderMember}))`,
+      )
+      .select('z.id', 'id')
+      .addSelect('z.member', 'member')
+      .addSelect(`COUNT(z1.id)`, 'rank')
+      .andWhere({ id: In(ids), member: In(members) })
+      .groupBy('z.member')
+      .addGroupBy('z.id')
+    return baseQuery?.getRawMany<
+      Pick<SortedSetObject, 'id' | 'member'> & { rank: number | string }
+    >()
   }
 
   async sortedSetRank(id: string, member: string): Promise<number | null> {
