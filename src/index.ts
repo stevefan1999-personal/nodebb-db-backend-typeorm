@@ -854,173 +854,69 @@ export class TypeORMDatabaseBackend
   }
 
   // Implement SortedSetQueryable
+
+  async getSortedSetMembers(id: string): Promise<string[]> {
+    return _.map(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({ id })
+        .select('member')
+        .addSelect('RANK() OVER (ORDER BY score)')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
+  }
+
   getSortedSetIntersect(
     params: SortedSetTheoryOperation & { withScores: false },
   ): Promise<string[]>
+
   getSortedSetIntersect(
     params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
   async getSortedSetIntersect({
     withScores,
-    ...params
-  }: SortedSetTheoryOperation & {
-    withScores?: boolean
-  }): Promise<ValueAndScore[] | string[]> {
-    return withScores
-      ? this.getSortedSetIntersectHelper({
-          ...params,
-          sort: 'ASC',
-          withScores: true,
-        })
-      : this.getSortedSetIntersectHelper({
-          ...params,
-          sort: 'ASC',
-          withScores: false,
-        })
-  }
-
-  private static aggregateFunctionTable = {
-    MAX: _.maxBy,
-    MIN: _.minBy,
-    SUM: _.sumBy,
-  }
-  getSortedSetIntersectHelper(
-    params: SortedSetTheoryOperation & { withScores: false },
-  ): Promise<string[]>
-  getSortedSetIntersectHelper(
-    params: SortedSetTheoryOperation & { withScores: true },
-  ): Promise<ValueAndScore[]>
-  async getSortedSetIntersectHelper({
+    aggregate,
     sets,
-    weights = [],
-    aggregate = 'SUM',
-    sort,
-    start = 0,
-    stop = -1,
-    withScores = false,
+    start,
+    stop,
+    weights,
   }: SortedSetTheoryOperation & {
     withScores?: boolean
   }): Promise<ValueAndScore[] | string[]> {
-    if (sets.length < weights.length) {
-      weights = weights.slice(0, sets.length)
-    }
-    while (sets.length > weights.length) {
-      weights.push(1)
-    }
+    const baseQuery = this.getSortedSetUnionBaseQuery({
+      aggregate,
+      sets,
+      sort: 'ASC',
+      start,
+      stop,
+      weights,
+    }).having('COUNT(*) = :length', { length: sets.length })
 
-    const weightMap = Object.fromEntries(_.zip(sets, weights))
-    let x = _.chain(
-      await this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
-        baseAlias: 'z',
-      })
-        .where({ id: In(sets) })
-        .innerJoinAndSelect(
-          (qb) =>
-            this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
-              baseAlias: 'z1',
-              queryBuilder: qb.from(SortedSetObject, 'z1'),
-            })
-              .where({ id: In(sets) })
-              .groupBy('z1.member')
-              .having('COUNT(*) = :n', { n: sets.length }),
-          'z1',
-          'z.member = z1.member',
-        )
-        .select('z.id', 'id')
-        .addSelect('z.member', 'member')
-        .addSelect('z.score', 'score')
-        .getRawMany<{
-          id: string
-          member: string
-          score: number
-        }>(),
-    )
-      .forEach((row) => (row.score *= weightMap[row.id]))
-      .groupBy('member')
-      .mapValues((x) =>
-        TypeORMDatabaseBackend.aggregateFunctionTable[aggregate](x, 'score'),
-      )
-      .entries()
-      .map(([value, score]) => ({
-        score,
-        value,
-      }))
-      .orderBy('score', sort === 'ASC' ? 'asc' : 'desc')
-      .drop(start)
-
-    const limit = stop - start + 1
-    if (limit) {
-      x = x.take(limit)
-    }
     return withScores
-      ? (x.value() as ValueAndScore[])
-      : x.map(({ value }) => value).value()
+      ? baseQuery.addSelect('z.member', 'value').getRawMany<ValueAndScore>()
+      : _.map(
+          await baseQuery
+            .addSelect('z.member', 'member')
+            .getRawMany<Pick<SortedSetObject, 'member'>>(),
+          'member',
+        )
   }
-
-  async getSortedSetRangeInner(
-    args: getSortedSetRangeInnerParams & { withScores: true },
-  ): Promise<ValueAndScore[]>
-  async getSortedSetRangeInner(
-    args: getSortedSetRangeInnerParams & { withScores: false },
-  ): Promise<string[]>
-  async getSortedSetRangeInner({
-    id,
-    sort,
-    start,
-    withScores = false,
-    ...rest
-  }: getSortedSetRangeInnerParams & { withScores?: boolean }): Promise<
-    string[] | ValueAndScore[]
-  > {
-    let offset: number
-    let limit: number
-    if ('byRange' in rest) {
-      ;({ offset, limit } = fixRange(start, rest.byRange.stop))
-    } else if ('byScore' in rest) {
-      ;[offset, limit] = [start, rest.byScore.count]
-    }
-
-    let qb = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
-      baseAlias: 'z',
-    })
-      .where({
-        id: Array.isArray(id) ? In(id) : id,
-      })
-      .offset(offset)
-      .addOrderBy('z.score', sort)
-
-    if ('byScore' in rest) {
-      const { min, max } = rest.byScore
-      if (Number.isFinite(min) && min !== '-inf') {
-        qb = qb.andWhere({ score: MoreThanOrEqual(min) })
-      }
-      if (Number.isFinite(max) && max !== '+inf') {
-        qb = qb.andWhere({ score: LessThanOrEqual(max) })
-      }
-    }
-
-    if (limit) {
-      qb = qb.limit(limit)
-    }
-
-    const ret = (await qb.getMany()).map(({ member, score }) =>
-      withScores ? { score, value: member } : member,
-    )
-    return withScores ? (ret as ValueAndScore[]) : (ret as string[])
-  }
-
-  getSortedSetRange(
+  async getSortedSetRange(
     id: string | string[],
     start: number,
     stop: number,
   ): Promise<string[]> {
-    return this.getSortedSetRangeInner({
-      byRange: { stop },
-      id,
-      sort: 'ASC',
-      start,
-      withScores: false,
-    })
+    return _.map(
+      await this.getSortedSetRangeBaseQuery({
+        byRange: { stop },
+        id,
+        sort: 'ASC',
+        start,
+      })
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
   }
 
   async getSortedSetRangeByLex(
@@ -1047,20 +943,24 @@ export class TypeORMDatabaseBackend
     )
   }
 
-  getSortedSetRangeByScore(
+  async getSortedSetRangeByScore(
     id: string,
     start: number,
     count: number,
     min: NumberTowardsMinima,
     max: NumberTowardsMaxima,
   ): Promise<string[]> {
-    return this.getSortedSetRangeInner({
-      byScore: { count, max, min },
-      id,
-      sort: 'ASC',
-      start,
-      withScores: false,
-    })
+    return _.map(
+      await this.getSortedSetRangeBaseQuery({
+        byScore: { count, max, min },
+        id,
+        sort: 'ASC',
+        start,
+      })
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
   }
 
   getSortedSetRangeByScoreWithScores(
@@ -1070,13 +970,15 @@ export class TypeORMDatabaseBackend
     min: NumberTowardsMinima,
     max: NumberTowardsMaxima,
   ): Promise<ValueAndScore[]> {
-    return this.getSortedSetRangeInner({
+    return this.getSortedSetRangeBaseQuery({
       byScore: { count, max, min },
       id,
       sort: 'ASC',
       start,
-      withScores: true,
     })
+      .select('z.member', 'value')
+      .addSelect('z.score', 'score')
+      .getRawMany<ValueAndScore>()
   }
 
   getSortedSetRangeWithScores(
@@ -1084,52 +986,68 @@ export class TypeORMDatabaseBackend
     start: number,
     stop: number,
   ): Promise<ValueAndScore[]> {
-    return this.getSortedSetRangeInner({
+    return this.getSortedSetRangeBaseQuery({
       byRange: { stop },
       id,
       sort: 'ASC',
       start,
-      withScores: true,
     })
+      .select('z.member', 'value')
+      .addSelect('z.score', 'score')
+      .getRawMany<ValueAndScore>()
   }
 
   getSortedSetRevIntersect(
     params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
+
   getSortedSetRevIntersect(
-    params: SortedSetTheoryOperation & { withScores: false },
+    params: SortedSetTheoryOperation & { withScores?: false },
   ): Promise<string[]>
-  getSortedSetRevIntersect({
+  async getSortedSetRevIntersect({
     withScores,
-    ...params
+    aggregate,
+    sets,
+    start,
+    stop,
+    weights,
   }: SortedSetTheoryOperation & { withScores?: boolean }): Promise<
     string[] | ValueAndScore[]
   > {
-    return withScores
-      ? this.getSortedSetIntersectHelper({
-          ...params,
-          sort: 'DESC',
-          withScores: true,
-        })
-      : this.getSortedSetIntersectHelper({
-          ...params,
-          sort: 'DESC',
-          withScores: false,
-        })
-  }
+    const baseQuery = this.getSortedSetUnionBaseQuery({
+      aggregate,
+      sets,
+      sort: 'DESC',
+      start,
+      stop,
+      weights,
+    }).having('COUNT(*) = :length', { length: sets.length })
 
-  getSortedSetRevRange(
+    return withScores
+      ? baseQuery.addSelect('z.member', 'value').getRawMany<ValueAndScore>()
+      : _.map(
+          await baseQuery
+            .addSelect('z.member', 'member')
+            .getRawMany<Pick<SortedSetObject, 'member'>>(),
+          'member',
+        )
+  }
+  async getSortedSetRevRange(
     id: string | string[],
     start: number,
     stop: number,
   ): Promise<string[]> {
-    return this.getSortedSetRangeInner({
-      byRange: { stop },
-      id,
-      sort: 'DESC',
-      start,
-      withScores: false,
-    })
+    return _.map(
+      await this.getSortedSetRangeBaseQuery({
+        byRange: { stop },
+        id,
+        sort: 'DESC',
+        start,
+      })
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
   }
 
   async getSortedSetRevRangeByLex(
@@ -1152,20 +1070,24 @@ export class TypeORMDatabaseBackend
     )
   }
 
-  getSortedSetRevRangeByScore(
+  async getSortedSetRevRangeByScore(
     id: string,
     start: number,
     count: number,
     max: NumberTowardsMaxima,
     min: NumberTowardsMinima,
   ): Promise<string[]> {
-    return this.getSortedSetRangeInner({
-      byScore: { count, max, min },
-      id,
-      sort: 'DESC',
-      start,
-      withScores: false,
-    })
+    return _.map(
+      await this.getSortedSetRangeBaseQuery({
+        byScore: { count, max, min },
+        id,
+        sort: 'DESC',
+        start,
+      })
+        .select('z.member', 'member')
+        .getRawMany<Pick<SortedSetObject, 'member'>>(),
+      'member',
+    )
   }
 
   getSortedSetRevRangeByScoreWithScores(
@@ -1175,13 +1097,15 @@ export class TypeORMDatabaseBackend
     max: NumberTowardsMaxima,
     min: NumberTowardsMinima,
   ): Promise<ValueAndScore[]> {
-    return this.getSortedSetRangeInner({
+    return this.getSortedSetRangeBaseQuery({
       byScore: { count, max, min },
       id,
       sort: 'DESC',
       start,
-      withScores: true,
     })
+      .select('z.member', 'value')
+      .addSelect('z.score', 'score')
+      .getRawMany<ValueAndScore>()
   }
 
   getSortedSetRevRangeWithScores(
@@ -1189,24 +1113,50 @@ export class TypeORMDatabaseBackend
     start: number,
     stop: number,
   ): Promise<ValueAndScore[]> {
-    return this.getSortedSetRangeInner({
+    return this.getSortedSetRangeBaseQuery({
       byRange: { stop },
       id,
       sort: 'DESC',
       start,
-      withScores: true,
     })
+      .select('z.member', 'value')
+      .addSelect('z.score', 'score')
+      .getRawMany<ValueAndScore>()
   }
+
   getSortedSetRevUnion(
-    _params: SortedSetTheoryOperation & { withScores: true },
+    params: SortedSetTheoryOperation & { withScores: true },
   ): Promise<ValueAndScore[]>
+
   getSortedSetRevUnion(
-    _params: SortedSetTheoryOperation & { withScores: false },
+    params: SortedSetTheoryOperation & { withScores?: false },
   ): Promise<string[]>
-  getSortedSetRevUnion(
-    _params: SortedSetTheoryOperation & { withScores?: boolean },
-  ): Promise<string[] | ValueAndScore[]> {
-    throw new Error('Method not implemented.')
+  async getSortedSetRevUnion({
+    aggregate,
+    sets,
+    start,
+    stop,
+    weights,
+    withScores,
+  }: SortedSetTheoryOperation & { withScores?: boolean }): Promise<
+    string[] | ValueAndScore[]
+  > {
+    const baseQuery = this.getSortedSetUnionBaseQuery({
+      aggregate,
+      sets,
+      sort: 'DESC',
+      start,
+      stop,
+      weights,
+    })
+    return withScores
+      ? baseQuery.select('z.member', 'value').getRawMany<ValueAndScore>()
+      : _.map(
+          await baseQuery
+            .select('z.member', 'member')
+            .getRawMany<Pick<SortedSetObject, 'member'>>(),
+          'member',
+        )
   }
 
   getSortedSetScan(
@@ -1301,7 +1251,6 @@ export class TypeORMDatabaseBackend
       })
       .execute()
   }
-
   async sortedSetAddBulk(
     data: [id: string, scores: number[], members: string[]][],
   ): Promise<void> {
@@ -1369,18 +1318,14 @@ export class TypeORMDatabaseBackend
   }
 
   async sortedSetIntersectCard(ids: string[]): Promise<number> {
-    return (
-      (
-        await this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
-          baseAlias: 'z',
-        })
-          .where({ id: In(ids) })
-          .groupBy('z.member')
-          .having('COUNT(*) = :length', { length: ids.length })
-          .select('count(*) over ()', 'c')
-          .getRawOne<{ c: number }>()
-      )?.c ?? 0
-    )
+    const baseQuery = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+      baseAlias: 'z',
+    })
+      .where({ id: In(ids) })
+      .groupBy('z.member')
+      .having('COUNT(*) = :length', { length: ids.length })
+      .select('count(*)', 'c')
+    return (await baseQuery.getRawMany())?.length
   }
 
   sortedSetLexCount(
@@ -1416,23 +1361,36 @@ export class TypeORMDatabaseBackend
       .getRawMany<Pick<SortedSetObject, 'id' | 'member'> & { rank: number }>()
   }
 
-  async sortedSetRank(id: string, member: string): Promise<number> {
-    return (
-      (await this.getSortedSetRankInner('ASC', [id], [member]))?.[0]?.rank ??
-      null
-    )
+  async sortedSetRank(id: string, member: string): Promise<number | null> {
+    const rank = (await this.getSortedSetRankInner('ASC', [id], [member]))?.[0]
+      ?.rank
+    return rank ? Number(rank) : null
   }
 
-  async sortedSetRanks(id: string, members: string[]): Promise<number[]> {
+  async sortedSetRanks(
+    id: string,
+    members: string[],
+  ): Promise<(number | null)[]> {
     return _.chain(await this.getSortedSetRankInner('ASC', [id], members))
       .keyBy('member')
       .mapValues('rank')
-      .thru((x) => members.map((member) => x[member] ?? null))
+      .thru(
+        mapper((x, member) => {
+          const rank = x[member]
+          return (typeof rank === 'string' ? Number(rank) : rank) ?? null
+        }, members),
+      )
       .value()
   }
 
-  sortedSetRemove(key: string, value: string): Promise<void> {
-    throw new Error('Method not implemented.')
+  async sortedSetRemove(
+    key: string | string[],
+    value: string | string[],
+  ): Promise<void> {
+    await this.dataSource?.getRepository(SortedSetObject).delete({
+      id: Array.isArray(key) ? In(key) : key,
+      member: Array.isArray(value) ? In(value) : value,
+    })
   }
 
   sortedSetRemoveBulk(_data: [key: string, member: string][]): Promise<void> {
@@ -1448,17 +1406,21 @@ export class TypeORMDatabaseBackend
   }
 
   async sortedSetRevRank(id: string, member: string): Promise<number> {
-    return (
-      (await this.getSortedSetRankInner('DESC', [id], [member]))?.[0]?.rank ??
-      null
-    )
+    const rank = (await this.getSortedSetRankInner('DESC', [id], [member]))?.[0]
+      ?.rank
+    return rank ? Number(rank) : null
   }
 
   async sortedSetRevRanks(id: string, members: string[]): Promise<number[]> {
     return _.chain(await this.getSortedSetRankInner('DESC', [id], members))
       .keyBy('member')
       .mapValues('rank')
-      .thru(mapper((x, member) => x[member] ?? null, members))
+      .thru(
+        mapper((x: Record<string, number | string>, member) => {
+          const rank = x[member]
+          return (typeof rank === 'string' ? Number(rank) : rank) ?? null
+        }, members),
+      )
       .value()
   }
 
@@ -1481,12 +1443,17 @@ export class TypeORMDatabaseBackend
     )
       .keyBy('member')
       .mapValues('score')
-      .thru((x) => members.map((member) => x[member] ?? null))
+      .thru(
+        mapper((x: Record<string, number>, member) => {
+          const score = x[member]
+          return (typeof score === 'string' ? Number(score) : score) ?? null
+        }, members),
+      )
       .value()
   }
 
   async sortedSetUnionCard(id: string[]): Promise<number> {
-    return (
+    return Number(
       (
         await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
           .where({
@@ -1494,7 +1461,7 @@ export class TypeORMDatabaseBackend
           })
           .select('COUNT(DISTINCT(member))', 'count')
           .getRawOne()
-      )?.count ?? 0
+      )?.count ?? 0,
     )
   }
 
@@ -1534,7 +1501,12 @@ export class TypeORMDatabaseBackend
     )
       .keyBy('id')
       .mapValues('count')
-      .thru((x) => keys.map((key) => x[key] ?? 0))
+      .thru(
+        mapper((x, key) => {
+          const count = x[key]
+          return (typeof count === 'string' ? Number(count) : count) ?? 0
+        }, keys),
+      )
       .value()
   }
 
@@ -1557,14 +1529,20 @@ export class TypeORMDatabaseBackend
     )
       .groupBy('id')
       .mapValues((x) => _.chain(x).keyBy('member').mapValues('rank').value())
-      .thru((x) =>
-        _.zip(ids, members).map(([id, member]) => x[id]?.[member] ?? null),
+      .thru(
+        mapper((x, [id, member]) => {
+          const rank = x[id]?.[member]
+          return (typeof rank === 'string' ? Number(rank) : rank) ?? null
+        }, _.zip(ids, members)),
       )
       .value()
   }
 
-  sortedSetsRemove(keys: string[], value: string): Promise<void> {
-    throw new Error('Method not implemented.')
+  async sortedSetsRemove(ids: string[], member: string): Promise<void> {
+    await this.dataSource?.getRepository(SortedSetObject).delete({
+      id: In(ids),
+      member,
+    })
   }
 
   sortedSetsRemoveRangeByScore(
@@ -1583,16 +1561,50 @@ export class TypeORMDatabaseBackend
       .groupBy('id')
       .mapValues((x) => _.chain(x).keyBy('member').mapValues('rank').value())
       .thru(
-        mapper(
-          (data, [id, member]) => data[id][member] ?? null,
-          cartesianProduct([ids, members]),
-        ),
+        mapper((data, [id, member]) => {
+          const rank = data[id]?.[member]
+          return (typeof rank === 'string' ? Number(rank) : rank) ?? null
+        }, cartesianProduct([ids, members])),
       )
       .value()
   }
 
-  sortedSetsScore(keys: string[], value: string): Promise<number[]> {
-    throw new Error('Method not implemented.')
+  async sortedSetsScore(ids: string[], member: string): Promise<number[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
+        .where({ id: In(ids), member })
+        .select(['id', 'score'])
+        .getRawMany<Pick<SortedSetObject, 'id' | 'score'>>(),
+    )
+      .keyBy('id')
+      .mapValues('score')
+      .thru(mapper((data: Record<string, number>, id) => data[id] ?? null, ids))
+      .value()
+  }
+
+  // Helpers
+
+  private getQueryBuildByClassWithLiveObject<T>(
+    klass: { new (): T },
+    {
+      baseAlias = 'b',
+      liveObjectAlias = 'lo',
+      em = this.dataSource?.manager,
+      repo = em?.getRepository(klass),
+      queryBuilder = repo?.createQueryBuilder(baseAlias),
+    }: {
+      baseAlias?: string
+      liveObjectAlias?: string
+      em?: EntityManager
+      repo?: Repository<T>
+      queryBuilder?: SelectQueryBuilder<T>
+    } = {},
+  ): SelectQueryBuilder<T> | null {
+    return queryBuilder?.innerJoin(
+      DbObjectLive,
+      liveObjectAlias,
+      `${liveObjectAlias}.id = ${baseAlias}.id`,
+    )
   }
   private getSortedSetUnionBaseQuery({
     sets,
