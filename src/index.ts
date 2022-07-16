@@ -2,7 +2,6 @@ import * as chrono from 'chrono-node'
 import { differenceInMilliseconds, differenceInSeconds } from 'date-fns/fp'
 import { Store } from 'express-session'
 import * as _ from 'lodash'
-import * as nconf from 'nconf'
 import {
   DataSource,
   DataSourceOptions,
@@ -14,7 +13,6 @@ import {
   Repository,
   SelectQueryBuilder,
 } from 'typeorm'
-import * as winston from 'winston'
 
 import {
   HashQueryable,
@@ -52,17 +50,11 @@ import {
   mapper,
 } from './utils'
 
-const sensibleDefault: { [key: string]: { username?: string; port?: number } } =
-  {
-    mysql: {
-      port: 3306,
-      username: 'root',
-    },
-    postgres: {
-      port: 5432,
-      username: 'postgres',
-    },
-  }
+import type { Provider } from 'nconf'
+import type { Logger } from 'winston'
+
+const nconf: Provider = require.main.require('nconf')
+const winston: Logger = require.main.require('winston')
 
 type getSortedSetRangeInnerParams = {
   id: string | string[]
