@@ -15,22 +15,33 @@ import {
 } from 'typeorm'
 
 import {
+  FileBasedDatabaseConnectionOptions,
   HashQueryable,
   HashSetQueryable,
   INodeBBDatabaseBackend,
   ListQueryable,
+  Mutable,
   NumberTowardsMaxima,
   NumberTowardsMinima,
   ObjectType,
   RedisStyleMatchString,
   RedisStyleRangeString,
+  RemoteBasedDatabaseConnectionOptions,
   SortedSetQueryable,
   SortedSetScanBaseParameters,
   SortedSetTheoryOperation,
+  SqliteFamilyDatabaseConnectionOptions,
   StringQueryable,
+  SupportedDatabaseConnectionOptions,
   ValueAndScore,
 } from '../types'
 
+import {
+  databasePersonality,
+  PopularDatabaseType,
+  resolveDatabaseType,
+  resolveDatabaseTypeByDriver,
+} from './database_personality'
 import {
   DbObject,
   entities,
@@ -88,49 +99,78 @@ export class TypeORMDatabaseBackend
     return this.#dataSource?.isInitialized ? this.#dataSource : null
   }
 
+  get databaseType(): PopularDatabaseType | null {
+    return resolveDatabaseTypeByDriver(
+      this.dataSource?.manager.connection.driver,
+    )
+  }
+
   static getConnectionOptions(
-    typeorm: any = nconf.get('typeorm'),
+    options: SupportedDatabaseConnectionOptions = nconf.get('typeorm'),
   ): DataSourceOptions {
-    if (!typeorm.type) {
+    if (!options.type) {
       throw new Error('[[error:no-database-type-specified]]')
     }
+    const knownDatabaseType = resolveDatabaseType(options.type)
 
-    if (typeorm.type === 'sqlite') {
+    if (knownDatabaseType === PopularDatabaseType.Sqlite) {
+      const typeorm = options as Mutable<FileBasedDatabaseConnectionOptions>
+
       if (!typeorm.database) {
         winston.warn('You have no database file, using "./nodebb.db"')
         typeorm.database = './nodebb.db'
       }
+
+      const connOptions = {
+        database: typeorm.database,
+        type: typeorm.type,
+      }
+
+      return _.merge(
+        connOptions,
+        ((typeorm as any).options ??
+          {}) as SqliteFamilyDatabaseConnectionOptions,
+      )
     } else {
-      const sensibleDefaultByType = sensibleDefault[typeorm.type]
-      if (!typeorm.host) {
+      const typeorm = options as Mutable<RemoteBasedDatabaseConnectionOptions>
+
+      const sensibleDefaultByType =
+        databasePersonality[knownDatabaseType]?.sensibleDefault
+      if ('host' in typeorm && !typeorm.host) {
         typeorm.host = '127.0.0.1'
       }
-      if (!typeorm.port && sensibleDefaultByType?.port) {
-        typeorm.port = sensibleDefaultByType.port
+      if ('port' in typeorm && !typeorm.port) {
+        typeorm.port = sensibleDefaultByType?.port
       }
-      if (!typeorm.username && sensibleDefaultByType?.port) {
-        typeorm.port = sensibleDefaultByType.port
+      if ('username' in typeorm && !typeorm.username) {
+        typeorm.username = sensibleDefaultByType?.username
       }
-      if (!typeorm.database) {
+      if ('database' in typeorm && !typeorm.database) {
         winston.warn('You have no database name, using "nodebb"')
         typeorm.database = 'nodebb'
       }
-    }
+      const connOptions = {
+        database: typeorm.database,
+        host: typeorm.host,
+        password: typeorm.password,
+        port: typeorm.port,
+        ssl:
+          knownDatabaseType !== PopularDatabaseType.Oracle
+            ? (typeorm as any).ssl
+            : {},
+        type: typeorm.type,
+        username: typeorm.username,
+      }
 
-    const connOptions = {
-      database: typeorm.database,
-      host: typeorm.host,
-      password: typeorm.password,
-      port: typeorm.port,
-      ssl: typeorm.ssl,
-      type: typeorm.type,
-      username: typeorm.username,
+      return _.merge(
+        connOptions,
+        ((typeorm as any).options ??
+          {}) as RemoteBasedDatabaseConnectionOptions,
+      )
     }
-
-    return _.merge(connOptions, typeorm.options || {})
   }
 
-  async init(args?: DataSourceOptions): Promise<void> {
+  async init(args?: SupportedDatabaseConnectionOptions): Promise<void> {
     const conf = TypeORMDatabaseBackend.getConnectionOptions(args)
     try {
       this.#dataSource = await new DataSource({

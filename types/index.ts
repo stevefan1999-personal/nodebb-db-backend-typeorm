@@ -56,3 +56,11 @@ export type ValueAndScore = { value: string; score: number }
 export type RedisStyleAggregate = 'SUM' | 'MIN' | 'MAX'
 export type NumberTowardsMinima = number | '-inf'
 export type NumberTowardsMaxima = number | '+inf'
+
+export {
+  SupportedDatabaseConnectionOptions,
+  RemoteBasedDatabaseConnectionOptions,
+  FileBasedDatabaseConnectionOptions,
+  SqliteFamilyDatabaseConnectionOptions,
+} from './database'
+export { Mutable } from './mutable'
