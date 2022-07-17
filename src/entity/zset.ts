@@ -11,7 +11,7 @@ export class SortedSetObject extends TypedObject(ObjectType.SORTED_SET) {
   @Index()
   member: string
 
-  @Column()
+  @Column({ type: 'real' })
   @Index()
   score: number
 }
