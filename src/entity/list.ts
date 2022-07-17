@@ -1,13 +1,7 @@
-import {
-  Column,
-  Entity,
-  EntitySubscriberInterface,
-  EventSubscriber,
-  InsertEvent,
-} from 'typeorm'
+import { Column, Entity, EventSubscriber } from 'typeorm'
 
-import { DbObject, ObjectType } from './object'
-import { TypedObject } from './typed_object'
+import { ObjectType } from './object'
+import { TypedObject, TypedObjectSubscriber } from './typed_object'
 
 @Entity({ name: ObjectType.LIST })
 export class ListObject extends TypedObject(ObjectType.LIST) {
@@ -16,23 +10,4 @@ export class ListObject extends TypedObject(ObjectType.LIST) {
 }
 
 @EventSubscriber()
-export class ListObjectSubscriber
-  implements EntitySubscriberInterface<ListObject>
-{
-  listenTo(): any {
-    return ListObject
-  }
-
-  async beforeInsert(event: InsertEvent<ListObject>): Promise<void> {
-    await event.manager
-      .getRepository(DbObject)
-      .createQueryBuilder()
-      .insert()
-      .orUpdate(['type'], ['id', 'type'])
-      .values({
-        id: event.entity.id,
-        type: event.entity.type,
-      })
-      .execute()
-  }
-}
+export class ListObjectSubscriber extends TypedObjectSubscriber(ListObject) {}
