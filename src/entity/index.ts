@@ -1,11 +1,16 @@
 import 'reflect-metadata'
 
 import { HashObject, HashObjectSubscriber } from './hash'
-import { ListObject, ListObjectSubscriber } from './list'
+import { ListObject, ListObjectSubscriber, ReorderedListObject } from './list'
 import { DbObject, DbObjectLive, ObjectType } from './object'
 import { HashSetObject, HashSetObjectSubscriber } from './set'
 import { StringObject, StringObjectSubscriber } from './string'
-import { SortedSetObject, SortedSetObjectSubscriber } from './zset'
+import {
+  ReorderedSortedSetObject,
+  ReorderedSortedSetObjectReversed,
+  SortedSetObject,
+  SortedSetObjectSubscriber,
+} from './zset'
 
 export const entities = {
   DbObject,
@@ -13,6 +18,9 @@ export const entities = {
   HashObject,
   HashSetObject,
   ListObject,
+  ReorderedListObject,
+  ReorderedSortedSetObject,
+  ReorderedSortedSetObjectReversed,
   SortedSetObject,
   StringObject,
 }
@@ -34,6 +42,9 @@ export {
   ListObject,
   ListObjectSubscriber,
   ObjectType,
+  ReorderedListObject,
+  ReorderedSortedSetObject,
+  ReorderedSortedSetObjectReversed,
   SortedSetObject,
   SortedSetObjectSubscriber,
   StringObject,

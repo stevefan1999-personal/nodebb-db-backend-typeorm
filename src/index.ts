@@ -48,6 +48,8 @@ import {
   HashObject,
   HashSetObject,
   ListObject,
+  ReorderedListObject,
+  ReorderedSortedSetObject,
   SortedSetObject,
   StringObject,
   subscribers,
@@ -547,72 +549,210 @@ export class TypeORMDatabaseBackend
   // Implement ListQueryable
 
   async listPrepend(id: string, value: string): Promise<void> {
-    const obj =
-      (await this.dataSource
-        .getRepository(ListObject)
-        .findOne({ where: { id } })) ??
-      _.thru(new ListObject(), (l) => {
-        l.id = id
-        return l
+    await this.getQueryBuildByClassWithLiveObject(ListObject)
+      .insert()
+      .values({
+        ...new ListObject(),
+        id,
+        slot: () =>
+          this.getQueryBuildByClassWithLiveObject(ListObject, {
+            baseAlias: 'l',
+            subquery: true,
+          })
+            .select('COALESCE(MIN(l.slot) - 1, 0)')
+            .where('l.id = :id')
+            .getQuery(),
+        value,
       })
-    obj.array = [value, ...obj.array]
-    await obj.save()
+      .setParameters({ id })
+      .updateEntity(false)
+      .execute()
   }
 
   async listAppend(id: string, value: string): Promise<void> {
-    const obj =
-      (await this.dataSource
-        .getRepository(ListObject)
-        .findOne({ where: { id } })) ??
-      _.thru(new ListObject(), (l) => {
-        l.id = id
-        return l
+    await this.getQueryBuildByClassWithLiveObject(ListObject)
+      .insert()
+      .values({
+        ...new ListObject(),
+        id,
+        slot: () =>
+          this.getQueryBuildByClassWithLiveObject(ListObject, {
+            baseAlias: 'l',
+            subquery: true,
+          })
+            .select('COALESCE(MAX(l.slot) + 1, 0)')
+            .where('l.id = :id')
+            .getQuery(),
+        value,
       })
-    obj.array = [...obj.array, value]
-    await obj.save()
+      .setParameter('id', id)
+      .updateEntity(false)
+      .execute()
   }
 
-  async listRemoveLast(id: string): Promise<any> {
-    const obj = await this.getQueryBuildByClassWithLiveObject(ListObject)
-      .where({ id })
-      .getOneOrFail()
-    const ret = obj.array.pop()
-    await obj.save()
-    return ret
+  async listRemoveLast(id: string): Promise<string | null> {
+    if (!this.dataSource.driver.isReturningSqlSupported('delete')) {
+      return this.dataSource.transaction(async (em) => {
+        const { slot, value } =
+          (await this.getQueryBuildByClassWithLiveObject(ReorderedListObject, {
+            baseAlias: 'l',
+            em,
+          })
+            .orderBy('l.rank', 'DESC')
+            .select('l.slot', 'slot')
+            .addSelect('l.value', 'value')
+            .limit(1)
+            .getRawOne()) ?? {}
+
+        if (value) {
+          await em.delete(ListObject, { id, slot })
+        }
+        return value ?? null
+      })
+    }
+    const slot = this.getQueryBuildByClassWithLiveObject(ReorderedListObject, {
+      baseAlias: 'l',
+      subquery: true,
+    })
+      .orderBy('l.rank', 'DESC')
+      .select('l.slot', 'slot')
+      .limit(1)
+
+    const baseQuery = this.dataSource
+      .createQueryBuilder()
+      .delete()
+      .from(ListObject)
+      .where({
+        id,
+      })
+      .andWhere(`slot = ${slot.getQuery()}`)
+
+    return (
+      (await baseQuery.returning(['value']).execute()).raw?.[0]?.value ?? null
+    )
   }
 
   async listRemoveAll(id: string, value: string | string[]): Promise<void> {
-    const obj = await this.getQueryBuildByClassWithLiveObject(ListObject)
-      .where({ id })
-      .getOneOrFail()
-    obj.array = _.without(obj.array, value)
-    await obj.save()
+    await this.getQueryBuildByClassWithLiveObject(ListObject)
+      .delete()
+      .where({ id, value: Array.isArray(value) ? In(value) : value })
+      .execute()
   }
 
   async listTrim(id: string, start: number, stop: number): Promise<void> {
-    const obj = await this.getQueryBuildByClassWithLiveObject(ListObject)
-      .where({ id })
-      .getOneOrFail()
-    obj.array.splice(start, stop - start + (stop < 0 ? obj.array.length : 0))
-    await obj.save()
+    const reorderedListQuery = (): SelectQueryBuilder<ReorderedListObject> =>
+      this.getQueryBuildByClassWithLiveObject(ReorderedListObject, {
+        baseAlias: 'gr',
+        subquery: true,
+      })
+        .where('gr.id = :id')
+        .select('gr.slot', 'slot')
+        .orderBy('gr.rank', 'ASC')
+
+    const reverseQuery = (): SelectQueryBuilder<ReorderedListObject> =>
+      reorderedListQuery().orderBy('gr.rank', 'DESC')
+
+    const base = this.getQueryBuildByClassWithLiveObject(ListObject)
+      .delete()
+      .setParameters({ id })
+      .where('id = :id')
+
+    // Out of range indexes will not produce an error: if start is larger than the end of the list, or start > end,
+    // the result will be an empty list (which causes key to be removed).
+    // If end is larger than the end of the list, Redis will treat it like the last element of the list.
+
+    if (start > stop && ((start > 0 && stop > 0) || (start < 0 && stop < 0))) {
+      await base.execute()
+      return
+    }
+
+    const disjunctions = []
+
+    if (start > 0 && stop > start) {
+      const { offset, limit } = fixRange(start, stop)
+      let qb = reorderedListQuery().offset(offset)
+      if (limit > 0) {
+        qb = qb.limit(limit)
+      }
+      const wrappedQb = this.dataSource
+        .createQueryBuilder()
+        .subQuery()
+        .from(() => qb, 's')
+
+      disjunctions.push(`slot NOT IN ${wrappedQb.getQuery()}`)
+    } else if (start >= 0 && stop < 0) {
+      const [leftLimit, rightLimit] = [Math.abs(start), Math.abs(stop + 1)]
+      if (leftLimit > 0) {
+        const qb = this.dataSource
+          .createQueryBuilder()
+          .subQuery()
+          .from(() => reorderedListQuery().limit(leftLimit), 'left')
+        disjunctions.push(`slot IN ${qb.getQuery()}`)
+      }
+      if (rightLimit > 0) {
+        const qb = this.dataSource
+          .createQueryBuilder()
+          .subQuery()
+          .from(() => reverseQuery().limit(rightLimit), 'right')
+        disjunctions.push(`slot IN ${qb.getQuery()}`)
+      }
+    } else if (stop < 0 && stop > start) {
+      const [leftLimit, rightLimit] = [Math.abs(start), Math.abs(stop + 1)]
+      if (leftLimit > 0) {
+        const qb = this.dataSource
+          .createQueryBuilder()
+          .subQuery()
+          .from(() => {
+            const qb = reverseQuery().offset(leftLimit)
+            return (
+              databasePersonality[this.databaseType]?.quirks?.fixLimit?.(qb) ??
+              qb
+            )
+          }, 'left')
+        disjunctions.push(`slot IN ${qb.getQuery()}`)
+      }
+      if (rightLimit > 0) {
+        const qb = this.dataSource
+          .createQueryBuilder()
+          .subQuery()
+          .from(() => reverseQuery().limit(rightLimit), 'right')
+        disjunctions.push(`slot IN ${qb.getQuery()}`)
+      }
+    }
+
+    if (disjunctions.length > 0) {
+      await base
+        .andWhere(`(${disjunctions.map((query) => `(${query})`).join(' OR ')})`)
+        .execute()
+    }
   }
 
-  async getListRange(id: string, start: number, stop: number): Promise<any[]> {
-    return (
-      await this.getQueryBuildByClassWithLiveObject(ListObject)
-        .where({ id })
-        .getOneOrFail()
-    ).array.slice(start, stop)
+  async getListRange(
+    id: string,
+    start: number,
+    stop: number,
+  ): Promise<string[]> {
+    const { offset, limit } = fixRange(start, stop)
+
+    let queryBuilder1 = this.getQueryBuildByClassWithLiveObject(
+      ReorderedListObject,
+      { baseAlias: 'gr' },
+    )
+      .orderBy('gr.rank', 'ASC')
+      .where({ id })
+      .select('gr.value', 'value')
+      .offset(offset)
+    if (limit > 0) {
+      queryBuilder1 = queryBuilder1.limit(limit)
+    }
+
+    return _.map(await queryBuilder1.getRawMany(), 'value')
   }
 
   async listLength(id: string): Promise<number> {
-    return (
-      (
-        await this.getQueryBuildByClassWithLiveObject(ListObject)
-          .where({ id })
-          .getOne()
-      )?.array.length ?? 0
-    )
+    return this.getQueryBuildByClassWithLiveObject(ListObject)
+      .where({ id })
+      .getCount()
   }
 
   // Implement HashQueryable
