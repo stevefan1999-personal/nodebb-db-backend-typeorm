@@ -11,27 +11,17 @@ import { ObjectType } from './object'
 import { TypedObject, TypedObjectSubscriber } from './typed_object'
 
 @Entity({ name: ObjectType.LIST })
+@Index(['id', 'slot'])
 export class ListObject extends TypedObject(ObjectType.LIST) {
   @Column()
   value: string
 
   @PrimaryColumn({ default: 0, type: 'int' })
-  @Index()
   slot = 0
 }
 
 @ViewEntity('list_reordered', {
   expression(conn) {
-    const listObjectSelectQueryBuilder = (qb, condition) =>
-      qb
-        .from(ListObject, 'l')
-        .leftJoinAndSelect(ListObject, 'l1', `l.id = l1.id AND (${condition})`)
-        .select('l.id', 'id')
-        .addSelect('l.slot', 'slot')
-        .addSelect('l.value', 'value')
-        .groupBy('l.id')
-        .addGroupBy('l.slot')
-
     if (true) {
       return conn
         .createQueryBuilder(ListObject, 'l')
@@ -44,34 +34,46 @@ export class ListObject extends TypedObject(ObjectType.LIST) {
         )
         .addSelect(
           `-(RANK() OVER (PARTITION BY l.id ORDER BY l.slot DESC))`,
-          'rankBack',
+          'rank_back',
         )
     } else {
+      const helper = (qb, condition) =>
+        qb
+          .from(ListObject, 'l')
+          .leftJoinAndSelect(
+            ListObject,
+            'l1',
+            `l.id = l1.id AND (${condition})`,
+          )
+          .select('l.id', 'id')
+          .addSelect('l.slot', 'slot')
+          .addSelect('l.value', 'value')
+          .groupBy('l.id')
+          .addGroupBy('l.slot')
+          .addGroupBy('l.value')
+
       return conn
         .createQueryBuilder()
         .addFrom((qb) => {
-          return listObjectSelectQueryBuilder(
-            qb,
-            [`l.slot >= l1.slot`].map((q) => `(${q})`).join(' OR '),
-          ).addSelect(`COUNT(l1.id) - 1`, 'rank')
+          const condition = `l.slot >= l1.slot`
+          return helper(qb, condition).addSelect(`COUNT(l1.id) - 1`, 'rank')
         }, 'front')
         .addFrom((qb) => {
-          return listObjectSelectQueryBuilder(
-            qb,
-            [`l.slot <= l1.slot`].map((q) => `(${q})`).join(' OR '),
-          ).addSelect(`-COUNT(l1.id)`, 'rank')
+          const condition = `l.slot <= l1.slot`
+          return helper(qb, condition).addSelect(`-COUNT(l1.id)`, 'rank')
         }, 'back')
         .where(`front.id = back.id and front.slot = back.slot`)
         .addSelect('front.id', 'id')
         .addSelect('front.value', 'value')
         .addSelect('front.slot', 'slot')
-        .addSelect('back.rank', 'rank')
-        .addSelect('back.rank', 'rankBack')
+        .addSelect('front.rank', 'rank')
+        .addSelect('back.rank', 'rank_back')
     }
   },
 })
 @Index(['id', 'slot'])
 @Index(['id', 'rank'])
+@Index(['id', 'rank_back'])
 export class ReorderedListObject {
   @PrimaryColumn()
   readonly id: string
@@ -84,12 +86,10 @@ export class ReorderedListObject {
   readonly slot: number
 
   @Column({ type: 'int' })
-  @Index()
   readonly rank: number
 
   @Column({ type: 'int' })
-  @Index()
-  readonly rankBack: number
+  readonly rank_back: number
 }
 
 @EventSubscriber()

@@ -7,7 +7,6 @@ import { HashSetObject, HashSetObjectSubscriber } from './set'
 import { StringObject, StringObjectSubscriber } from './string'
 import {
   ReorderedSortedSetObject,
-  ReorderedSortedSetObjectReversed,
   SortedSetObject,
   SortedSetObjectSubscriber,
 } from './zset'
@@ -20,7 +19,6 @@ export const entities = {
   ListObject,
   ReorderedListObject,
   ReorderedSortedSetObject,
-  ReorderedSortedSetObjectReversed,
   SortedSetObject,
   StringObject,
 }
@@ -44,7 +42,6 @@ export {
   ObjectType,
   ReorderedListObject,
   ReorderedSortedSetObject,
-  ReorderedSortedSetObjectReversed,
   SortedSetObject,
   SortedSetObjectSubscriber,
   StringObject,

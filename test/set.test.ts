@@ -1,10 +1,34 @@
 import { suite, test, timeout } from '@testdeck/jest'
+import _ from 'lodash'
+import { Inject, Service } from 'typedi'
 
-import { TestSuiteBase } from './suite_base'
+import { DATABASE } from './setup'
 
-@suite()
+import type { TypeORMDatabaseBackend } from '~/index'
+
+@suite
 @timeout(60000)
-export class HashSetTest extends TestSuiteBase {
+@Service()
+export class HashSetTest {
+  static db: TypeORMDatabaseBackend
+  db: TypeORMDatabaseBackend
+
+  constructor(
+    @Inject(DATABASE)
+    private readonly dbFactory: () => TypeORMDatabaseBackend,
+  ) {}
+
+  async before(): Promise<void> {
+    if (!HashSetTest.db) {
+      this.db = HashSetTest.db = this.dbFactory()
+    }
+    await this.db.flushdb()
+  }
+
+  static async after(): Promise<void> {
+    await HashSetTest.db.close()
+  }
+
   @test
   async 'test set'(): Promise<void> {
     await this.db.setAdd('test', '1234')
@@ -18,12 +42,12 @@ export class HashSetTest extends TestSuiteBase {
       'abcd',
     ])
 
-    expect(
-      await this.db.getSetsMembers(['test', 'test1']),
-    ).toIncludeSameMembers([
-      ['1234', '5678', 'abcd'],
-      ['5678', 'abcd'],
-    ])
+    expect(await this.db.getSetsMembers(['test', 'test1'])).toSatisfy((arr) =>
+      _.isMatch(arr, [
+        ['1234', '5678', 'abcd'],
+        ['5678', 'abcd'],
+      ]),
+    )
     expect(await this.db.isSetMember('test', '1234')).toBeTruthy()
     expect(
       await this.db.isSetMembers('test', ['1234', 'nonexistent', 'abcd']),

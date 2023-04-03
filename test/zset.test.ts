@@ -1,25 +1,48 @@
 import { suite, test, timeout } from '@testdeck/jest'
 import * as _ from 'lodash'
+import { Inject, Service } from 'typedi'
 
-import { TestSuiteBase } from './suite_base'
+import { DATABASE } from './setup'
 
-@suite()
+import type { TypeORMDatabaseBackend } from '~/index'
+
+@suite
 @timeout(60000)
-export class SortedSetTest extends TestSuiteBase {
+@Service()
+export class SortedSetTest {
+  static db: TypeORMDatabaseBackend
+  db: TypeORMDatabaseBackend
+
+  constructor(
+    @Inject(DATABASE)
+    private readonly dbFactory: () => TypeORMDatabaseBackend,
+  ) {}
+
+  async before(): Promise<void> {
+    if (!SortedSetTest.db) {
+      this.db = SortedSetTest.db = this.dbFactory()
+    }
+    await this.db.flushdb()
+  }
+
+  static async after(): Promise<void> {
+    await SortedSetTest.db.close()
+  }
+
   @test
   async 'test basic usage'(): Promise<void> {
     await this.db.sortedSetAdd('test', 10, 'foo')
     await this.db.sortedSetAdd('test', 20, 'bar')
     await this.db.sortedSetAdd('test1', 3, 'qux')
     await this.db.sortedSetAdd('test1', 2, 'bar')
-
+    //
     expect(await this.db.getSortedSetsMembers(['test', 'test1'])).toStrictEqual(
       [
         ['foo', 'bar'],
         ['bar', 'qux'],
       ],
     )
-
+    //
     await this.db.sortedSetAddBulk([
       ['interCard1', [0, 0, 0], ['value1', 'value2', 'value3']],
       ['interCard2', [0, 0, 0], ['value2', 'value3', 'value4']],
@@ -100,6 +123,67 @@ export class SortedSetTest extends TestSuiteBase {
     expect(
       await this.db.isSortedSetMembers('foo', ['bar', 'baz']),
     ).toStrictEqual([true, false])
+  }
+
+  @test
+  async 'test getSortedSetMembers'(): Promise<void> {
+    await this.db.sortedSetAdd('foo1', 1, 'baz')
+    await this.db.sortedSetAdd('foo1', 2, 'qux')
+    await this.db.sortedSetAdd('foo1', 1.5, 'poo')
+    expect(await this.db.getSortedSetMembers('foo1')).toStrictEqual([
+      'baz',
+      'poo',
+      'qux',
+    ])
+  }
+
+  @test
+  async 'test sortedSetLexCount'(): Promise<void> {
+    await this.db.sortedSetAdd(
+      'sortedSetLex',
+      [0, 0, 0, 0],
+      ['a', 'b', 'c', 'd'],
+    )
+    expect(await this.db.sortedSetLexCount('sortedSetLex', '-', '+')).toBe(4)
+    expect(await this.db.sortedSetLexCount('sortedSetLex', 'a', 'd')).toBe(4)
+    expect(await this.db.sortedSetLexCount('sortedSetLex', '[a', '[d')).toBe(4)
+    expect(await this.db.sortedSetLexCount('sortedSetLex', '(a', '(d')).toBe(2)
+  }
+
+  @test
+  async 'test getSortedSetsMembers'(): Promise<void> {
+    await this.db.sortedSetAdd('foo', 1, 'baz')
+    await this.db.sortedSetAdd('foo', 2, 'qux')
+    await this.db.sortedSetAdd('foo', 1.5, 'poo')
+
+    await this.db.sortedSetAdd('bar', 3, 'qux')
+    await this.db.sortedSetAdd('bar', 2, 'baz')
+    await this.db.sortedSetAdd('bar', 1, 'poo')
+
+    expect(await this.db.getSortedSetsMembers(['foo', 'bar'])).toSatisfy(
+      (arr) =>
+        _.isMatch(arr, [
+          ['baz', 'poo', 'qux'],
+          ['poo', 'baz', 'qux'],
+        ]),
+    )
+  }
+
+  @test
+  async 'test isMemberOfSortedSets'(): Promise<void> {
+    await this.db.sortedSetAdd('foo', 1, 'bar')
+    await this.db.sortedSetAdd('foo', 2, 'baz')
+
+    await this.db.sortedSetAdd('bar', 1, 'poo')
+    await this.db.sortedSetAdd('bar', 2, 'baz')
+
+    expect(
+      await this.db.isMemberOfSortedSets(['foo', 'bar'], 'bar'),
+    ).toStrictEqual([true, false])
+
+    expect(
+      await this.db.isMemberOfSortedSets(['foo', 'bar'], 'baz'),
+    ).toStrictEqual([true, true])
   }
 
   @test

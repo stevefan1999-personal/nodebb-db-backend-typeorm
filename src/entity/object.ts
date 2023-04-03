@@ -42,14 +42,15 @@ export class DbObject {
       .orWhere('o.expireAt > CURRENT_TIMESTAMP')
   },
 })
+@Index(['id', 'type'])
 export class DbObjectLive {
   @PrimaryColumn()
-  id: string
+  readonly id: string
 
   @PrimaryColumn({
     enum: ObjectType,
     enumName: 'object_type',
     type: 'simple-enum',
   })
-  type: ObjectType
+  readonly type: ObjectType
 }

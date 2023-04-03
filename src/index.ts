@@ -30,7 +30,6 @@ import {
   SortedSetQueryable,
   SortedSetScanBaseParameters,
   SortedSetTheoryOperation,
-  SqliteFamilyDatabaseConnectionOptions,
   StringQueryable,
   SupportedDatabaseConnectionOptions,
   ValueAndScore,
@@ -60,6 +59,7 @@ import {
   cartesianProduct,
   convertRedisStyleMatchToSqlWildCard,
   fixRange,
+  intervalToSqlFunction,
   mapper,
 } from './utils'
 
@@ -71,8 +71,8 @@ const winston: Logger = require.main.require('winston')
 
 type getSortedSetRangeInnerParams = {
   id: string | string[]
-  sort: 'ASC' | 'DESC'
-  start: number
+  sort?: 'ASC' | 'DESC'
+  start?: number
 } & (
   | {
       byRange: { stop: number }
@@ -109,9 +109,7 @@ export class TypeORMDatabaseBackend
   }
 
   get databaseType(): PopularDatabaseType | null {
-    return resolveDatabaseTypeByDriver(
-      this.dataSource?.manager.connection.driver,
-    )
+    return resolveDatabaseTypeByDriver(this.dataSource?.driver)
   }
 
   static getConnectionOptions(
@@ -130,16 +128,7 @@ export class TypeORMDatabaseBackend
         typeorm.database = './nodebb.db'
       }
 
-      const connOptions = {
-        database: typeorm.database,
-        type: typeorm.type,
-      }
-
-      return _.merge(
-        connOptions,
-        ((typeorm as any).options ??
-          {}) as SqliteFamilyDatabaseConnectionOptions,
-      )
+      return typeorm
     } else {
       const typeorm = options as Mutable<RemoteBasedDatabaseConnectionOptions>
 
@@ -158,24 +147,14 @@ export class TypeORMDatabaseBackend
         winston.warn('You have no database name, using "nodebb"')
         typeorm.database = 'nodebb'
       }
-      const connOptions = {
-        database: typeorm.database,
-        host: typeorm.host,
-        password: typeorm.password,
-        port: typeorm.port,
+
+      return {
+        ...typeorm,
         ssl:
           knownDatabaseType !== PopularDatabaseType.Oracle
             ? (typeorm as any).ssl
             : {},
-        type: typeorm.type,
-        username: typeorm.username,
-      }
-
-      return _.merge(
-        connOptions,
-        ((typeorm as any).options ??
-          {}) as RemoteBasedDatabaseConnectionOptions,
-      )
+      } as DataSourceOptions
     }
   }
 
@@ -187,6 +166,10 @@ export class TypeORMDatabaseBackend
         entities,
         subscribers,
       }).initialize()
+
+      if (this.databaseType === PopularDatabaseType.Sqlite) {
+        this.#dataSource.driver.isReturningSqlSupported = () => true
+      }
     } catch (err) {
       if (err instanceof Error) {
         winston.error(
@@ -405,25 +388,19 @@ export class TypeORMDatabaseBackend
 
   // Implement HashSetQueryable
   async setAdd(
-    key: string | string[],
-    member: string | string[],
+    keyOrKeys: string | string[],
+    memberOrMembers: string | string[],
   ): Promise<void> {
+    const values = cartesianProduct([
+      Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys],
+      Array.isArray(memberOrMembers) ? memberOrMembers : [memberOrMembers],
+    ]).map(([id, member]) => ({ ...new HashSetObject(), id, member }))
     await this.dataSource
       ?.getRepository(HashSetObject)
       .createQueryBuilder()
       .insert()
       .orIgnore()
-      .values(
-        cartesianProduct(
-          !Array.isArray(key) ? [key] : key,
-          !Array.isArray(member) ? [member] : member,
-        ).map(([id, member]) => {
-          const data = new HashSetObject()
-          data.id = id
-          data.member = member
-          return data
-        }),
-      )
+      .values(values)
       .execute()
   }
 
@@ -477,7 +454,7 @@ export class TypeORMDatabaseBackend
         .getMany(),
     )
       .keyBy('id')
-      .thru(mapper((x, id) => id in x, ids))
+      .thru(mapper((data, id) => id in data, ids))
       .value()
   }
 
@@ -524,7 +501,7 @@ export class TypeORMDatabaseBackend
         .groupBy('l.id')
         .select('s.id')
         .addSelect('COUNT(*)', 'count')
-        .getRawMany<{ id: string; count: number }>(),
+        .getRawMany<Pick<HashSetObject, 'id'> & { count: number }>(),
     )
       .keyBy('id')
       .mapValues('count')
@@ -640,21 +617,9 @@ export class TypeORMDatabaseBackend
   }
 
   async listTrim(id: string, start: number, stop: number): Promise<void> {
-    const reorderedListQuery = (): SelectQueryBuilder<ReorderedListObject> =>
-      this.getQueryBuildByClassWithLiveObject(ReorderedListObject, {
-        baseAlias: 'gr',
-        subquery: true,
-      })
-        .where('gr.id = :id')
-        .select('gr.slot', 'slot')
-        .orderBy('gr.rank', 'ASC')
-
-    const reverseQuery = (): SelectQueryBuilder<ReorderedListObject> =>
-      reorderedListQuery().orderBy('gr.rank', 'DESC')
-
     const base = this.getQueryBuildByClassWithLiveObject(ListObject)
       .delete()
-      .setParameters({ id })
+      .setParameters({ id, start, stop })
       .where('id = :id')
 
     // Out of range indexes will not produce an error: if start is larger than the end of the list, or start > end,
@@ -666,64 +631,36 @@ export class TypeORMDatabaseBackend
       return
     }
 
-    const disjunctions = []
-
-    if (start > 0 && stop > start) {
-      const { offset, limit } = fixRange(start, stop)
-      let qb = reorderedListQuery().offset(offset)
-      if (limit > 0) {
-        qb = qb.limit(limit)
+    let slots = this.getQueryBuildByClassWithLiveObject(ReorderedListObject, {
+      baseAlias: 'gr',
+      subquery: true,
+    })
+      .where('gr.id = :id')
+      .select('gr.slot', 'slot')
+    if (stop > start) {
+      if (start >= 0) {
+        slots = slots.andWhere(`rank >= :start and rank <= :stop`)
       }
-      const wrappedQb = this.dataSource
-        .createQueryBuilder()
-        .subQuery()
-        .from(() => qb, 's')
-
-      disjunctions.push(`slot NOT IN ${wrappedQb.getQuery()}`)
+      if (stop < 0) {
+        slots = slots.andWhere(`rank_back >= :start and rank_back <= :stop`)
+      }
     } else if (start >= 0 && stop < 0) {
-      const [leftLimit, rightLimit] = [Math.abs(start), Math.abs(stop + 1)]
-      if (leftLimit > 0) {
-        const qb = this.dataSource
-          .createQueryBuilder()
-          .subQuery()
-          .from(() => reorderedListQuery().limit(leftLimit), 'left')
-        disjunctions.push(`slot IN ${qb.getQuery()}`)
-      }
-      if (rightLimit > 0) {
-        const qb = this.dataSource
-          .createQueryBuilder()
-          .subQuery()
-          .from(() => reverseQuery().limit(rightLimit), 'right')
-        disjunctions.push(`slot IN ${qb.getQuery()}`)
-      }
-    } else if (stop < 0 && stop > start) {
-      const [leftLimit, rightLimit] = [Math.abs(start), Math.abs(stop + 1)]
-      if (leftLimit > 0) {
-        const qb = this.dataSource
-          .createQueryBuilder()
-          .subQuery()
-          .from(() => {
-            const qb = reverseQuery().offset(leftLimit)
-            return (
-              databasePersonality[this.databaseType]?.quirks?.fixLimit?.(qb) ??
-              qb
-            )
-          }, 'left')
-        disjunctions.push(`slot IN ${qb.getQuery()}`)
-      }
-      if (rightLimit > 0) {
-        const qb = this.dataSource
-          .createQueryBuilder()
-          .subQuery()
-          .from(() => reverseQuery().limit(rightLimit), 'right')
-        disjunctions.push(`slot IN ${qb.getQuery()}`)
-      }
+      slots = slots
+        .andWhere(`rank_back <= :stop`)
+        .orderBy('rank', 'ASC')
+        .offset(start)
+      slots =
+        (start > 0
+          ? databasePersonality[this.databaseType]?.quirks?.fixLimit?.(slots)
+          : slots) ?? slots
     }
 
-    if (disjunctions.length > 0) {
-      await base
-        .andWhere(`(${disjunctions.map((query) => `(${query})`).join(' OR ')})`)
-        .execute()
+    if (slots) {
+      const sq = this.dataSource
+        .createQueryBuilder()
+        .subQuery()
+        .from(() => slots, 'slots')
+      await base.andWhere(`slot NOT IN ${sq.getQuery()}`).execute()
     }
   }
 
@@ -818,11 +755,11 @@ export class TypeORMDatabaseBackend
         )
           .keyBy('key')
           .mapValues('value')
-          .thru((x) =>
-            _.chain(keys)
-              .map((key) => [key, x[key] ?? null])
-              .fromPairs()
-              .value(),
+          .thru(
+            _.flow([
+              mapper((data, key) => [key, data[key] ?? null], keys),
+              Object.fromEntries,
+            ]),
           )
           .value()
   }
@@ -906,18 +843,17 @@ export class TypeORMDatabaseBackend
   ): Promise<void> {
     return this.dataSource?.transaction(async (em) => {
       const repo = em.getRepository(HashObject)
-      const values = data
-        .map(
-          ([key, kv]) =>
-            cartesianProduct(
-              Array.isArray(key) ? key : [key],
-              kv as any,
-            ) as any[],
-        )
-        .map(([key, [field, value]]) =>
-          this.incrObjectFieldHelper(repo, key, field, value),
-        )
-      await repo.save(await Promise.all(values))
+      await repo.save(
+        await Promise.all(
+          data
+            .flatMap(([key, match]) =>
+              cartesianProduct([[key], Object.entries(match)]),
+            )
+            .map(([key, [field, value]]) =>
+              this.incrObjectFieldHelper(repo, key, field, value),
+            ),
+        ),
+      )
     })
   }
 
@@ -936,7 +872,7 @@ export class TypeORMDatabaseBackend
       })
         .where({ id, key: In(keys) })
         .select('h.key')
-        .getMany(),
+        .getRawMany<Pick<HashObject, 'key'>>(),
     )
       .keyBy('key')
       .thru(mapper((x, key) => key in x, keys))
@@ -957,7 +893,7 @@ export class TypeORMDatabaseBackend
       ?.getRepository(HashObject)
       .createQueryBuilder()
       .insert()
-      .orUpdate(['value'], ['id', 'key'])
+      .orUpdate(['value'], ['id', '_key'])
       .values(
         args
           .filter(([__, data]) => Object.keys(data).length > 0)
@@ -997,7 +933,7 @@ export class TypeORMDatabaseBackend
       await this.getQueryBuildByClassWithLiveObject(SortedSetObject)
         .where({ id })
         .select('member')
-        .addSelect('RANK() OVER (ORDER BY score)')
+        .orderBy('score')
         .getRawMany<Pick<SortedSetObject, 'member'>>(),
       'member',
     )
@@ -1378,19 +1314,32 @@ export class TypeORMDatabaseBackend
         baseAlias: 'z',
       })
         .where({ id: In(ids) })
-        .addGroupBy('z.id')
-        .addGroupBy('z.member')
-        .addOrderBy('z.score', 'ASC')
         .getMany(),
     )
       .groupBy('id')
-      .mapValues((x) => _.chain(x).map('member').orderBy('score').value())
+      .mapValues((x) => _.chain(x).orderBy('score').map('member').value())
       .thru(mapper((data, id) => data[id] ?? [], ids))
       .value()
   }
 
-  getSortedSetsMembers(keys: string[]): Promise<string[]> {
-    throw new Error('Method not implemented.')
+  async isMemberOfSortedSets(
+    ids: string[],
+    member: string,
+  ): Promise<boolean[]> {
+    return _.chain(
+      await this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+        baseAlias: 'z',
+      })
+        .where({
+          id: In(ids),
+          member,
+        })
+        .select('z.id', 'id')
+        .getRawMany<Pick<SortedSetObject, 'id'>>(),
+    )
+      .keyBy('id')
+      .thru(mapper((data, id) => id in data, ids))
+      .value()
   }
 
   async isSortedSetMember(id: string, member: string): Promise<boolean> {
@@ -1412,7 +1361,7 @@ export class TypeORMDatabaseBackend
         .getRawMany<Pick<SortedSetObject, 'member'>>(),
     )
       .keyBy('member')
-      .thru((x) => members.map((member) => member in x))
+      .thru(mapper((x, member) => member in x, members))
       .value()
   }
 
@@ -1425,6 +1374,7 @@ export class TypeORMDatabaseBackend
   }
 
   sortedSetAdd(id: string, score: number, value: string): Promise<void>
+
   sortedSetAdd(id: string, scores: number[], values: string[]): Promise<void>
   async sortedSetAdd(
     id: string,
@@ -1460,7 +1410,7 @@ export class TypeORMDatabaseBackend
   ): Promise<void> {
     const values: SortedSetObject[] = []
     for (const [id, scores, members] of data) {
-      if (!scores.length || !members.length) {
+      if (!(scores.length && members.length)) {
         return
       }
       if (scores.length !== members.length) {
@@ -1532,50 +1482,35 @@ export class TypeORMDatabaseBackend
     return (await baseQuery.getRawMany())?.length
   }
 
-  sortedSetLexCount(
-    _id: string,
-    _min: RedisStyleRangeString,
-    _max: RedisStyleRangeString,
+  async sortedSetLexCount(
+    id: string,
+    min: RedisStyleRangeString | '-',
+    max: RedisStyleRangeString | '+',
   ): Promise<number> {
-    throw new Error('Method not implemented.')
+    return this.getSortedSetRangeBaseQuery({
+      byLex: { max, min },
+      id,
+    }).getCount()
   }
 
-  async getSortedSetRankInner(
-    sort: 'ASC' | 'DESC',
+  getSortedSetRankBaseQuery(
     ids: string[],
     members: string[],
-  ): Promise<
-    (Pick<SortedSetObject, 'id' | 'member'> & { rank: number | string })[]
-  > {
-    const cmp = sort === 'ASC' ? '>' : '<'
-    let baseQuery = this.getQueryBuildByClassWithLiveObject(SortedSetObject, {
+  ): SelectQueryBuilder<ReorderedSortedSetObject> {
+    return this.getQueryBuildByClassWithLiveObject(ReorderedSortedSetObject, {
       baseAlias: 'z',
     })
-    const [orderScore, orderMember] = [
-      `z.score ${cmp} z1.score`,
-      `z.score = z1.score and z.member ${cmp} z1.member`,
-    ]
-
-    baseQuery = baseQuery
-      .leftJoinAndSelect(
-        SortedSetObject,
-        'z1',
-        `z.id = z1.id and ((${orderScore}) or (${orderMember}))`,
-      )
+      .where({ id: In(ids), member: In(members) })
       .select('z.id', 'id')
       .addSelect('z.member', 'member')
-      .addSelect(`COUNT(z1.id)`, 'rank')
-      .andWhere({ id: In(ids), member: In(members) })
-      .groupBy('z.member')
-      .addGroupBy('z.id')
-    return baseQuery?.getRawMany<
-      Pick<SortedSetObject, 'id' | 'member'> & { rank: number | string }
-    >()
   }
 
   async sortedSetRank(id: string, member: string): Promise<number | null> {
-    const rank = (await this.getSortedSetRankInner('ASC', [id], [member]))?.[0]
-      ?.rank
+    const rank = (
+      await this.getSortedSetRankBaseQuery([id], [member])
+        .addSelect('z.rank', 'rank')
+        .getRawMany<Pick<ReorderedSortedSetObject, 'id' | 'member' | 'rank'>>()
+    )?.[0]?.rank
     return rank ? Number(rank) : null
   }
 
@@ -1583,7 +1518,11 @@ export class TypeORMDatabaseBackend
     id: string,
     members: string[],
   ): Promise<(number | null)[]> {
-    return _.chain(await this.getSortedSetRankInner('ASC', [id], members))
+    return _.chain(
+      await this.getSortedSetRankBaseQuery([id], members)
+        .addSelect('z.rank', 'rank')
+        .getRawMany<Pick<ReorderedSortedSetObject, 'id' | 'member' | 'rank'>>(),
+    )
       .keyBy('member')
       .mapValues('rank')
       .thru(
@@ -1611,26 +1550,41 @@ export class TypeORMDatabaseBackend
 
   sortedSetRemoveRangeByLex(
     _key: string,
-    _min: RedisStyleRangeString,
-    _max: RedisStyleRangeString,
+    _min: RedisStyleRangeString | '-',
+    _max: RedisStyleRangeString | '+',
   ): Promise<void> {
     throw new Error('Method not implemented.')
   }
 
   async sortedSetRevRank(id: string, member: string): Promise<number> {
-    const rank = (await this.getSortedSetRankInner('DESC', [id], [member]))?.[0]
-      ?.rank
-    return rank ? Number(rank) : null
+    const rank = (
+      await this.getSortedSetRankBaseQuery([id], [member])
+        .addSelect('z.rank_back', 'rank_back')
+        .getRawMany<
+          Pick<ReorderedSortedSetObject, 'id' | 'member' | 'rank_back'>
+        >()
+    )?.[0]?.rank_back
+    return Number.isFinite(rank) || typeof rank === 'string'
+      ? Math.abs(Number(rank)) - 1
+      : null
   }
 
   async sortedSetRevRanks(id: string, members: string[]): Promise<number[]> {
-    return _.chain(await this.getSortedSetRankInner('DESC', [id], members))
+    return _.chain(
+      await this.getSortedSetRankBaseQuery([id], members)
+        .addSelect('z.rank_back', 'rank_back')
+        .getRawMany<
+          Pick<ReorderedSortedSetObject, 'id' | 'member' | 'rank_back'>
+        >(),
+    )
       .keyBy('member')
-      .mapValues('rank')
+      .mapValues('rank_back')
       .thru(
         mapper((x: Record<string, number | string>, member) => {
           const rank = x[member]
-          return (typeof rank === 'string' ? Number(rank) : rank) ?? null
+          return Number.isFinite(rank) || typeof rank === 'string'
+            ? Math.abs(Number(rank)) - 1
+            : null
         }, members),
       )
       .value()
@@ -1682,23 +1636,22 @@ export class TypeORMDatabaseBackend
     scores: number | number[],
     member: string,
   ): Promise<void> {
+    const values = cartesianProduct([
+      ids,
+      Array.isArray(scores) ? scores : [scores],
+      [member],
+    ]).map(([id, score, member_]) => ({
+      ...new SortedSetObject(),
+      id,
+      member: member_,
+      score,
+    }))
     await this.dataSource
       ?.getRepository(SortedSetObject)
       .createQueryBuilder()
       .insert()
       .orUpdate(['score'], ['id', 'member'])
-      .values(
-        cartesianProduct([
-          ids,
-          Array.isArray(scores) ? scores : [scores],
-          [member],
-        ]).map(([id, score, member_]) => ({
-          ...new SortedSetObject(),
-          id,
-          member: member_,
-          score,
-        })),
-      )
+      .values(values)
       .execute()
   }
 
@@ -1733,11 +1686,9 @@ export class TypeORMDatabaseBackend
     members: { [K in keyof T]: any },
   ): Promise<number[]> {
     return _.chain(
-      await this.getSortedSetRankInner(
-        'ASC',
-        ids as string[],
-        members as string[],
-      ),
+      await this.getSortedSetRankBaseQuery(ids as string[], members as string[])
+        .addSelect('z.rank', 'rank')
+        .getRawMany<Pick<ReorderedSortedSetObject, 'id' | 'member' | 'rank'>>(),
     )
       .groupBy('id')
       .mapValues((x) => _.chain(x).keyBy('member').mapValues('rank').value())
@@ -1769,13 +1720,23 @@ export class TypeORMDatabaseBackend
     ids: string[],
     members: string[],
   ): Promise<number[]> {
-    return _.chain(await this.getSortedSetRankInner('DESC', ids, members))
+    return _.chain(
+      await this.getSortedSetRankBaseQuery(ids, members)
+        .addSelect('z.rank_back', 'rank_back')
+        .getRawMany<
+          Pick<ReorderedSortedSetObject, 'id' | 'member' | 'rank_back'>
+        >(),
+    )
       .groupBy('id')
-      .mapValues((x) => _.chain(x).keyBy('member').mapValues('rank').value())
+      .mapValues((x) =>
+        _.chain(x).keyBy('member').mapValues('rank_back').value(),
+      )
       .thru(
         mapper((data, [id, member]) => {
           const rank = data[id]?.[member]
-          return (typeof rank === 'string' ? Number(rank) : rank) ?? null
+          return Number.isFinite(rank) || typeof rank === 'string'
+            ? Math.abs(Number(rank)) - 1
+            : null
         }, cartesianProduct([ids, members])),
       )
       .value()
@@ -1801,15 +1762,19 @@ export class TypeORMDatabaseBackend
     {
       baseAlias = 'b',
       liveObjectAlias = 'lo',
+      subquery = false,
       em = this.dataSource?.manager,
       repo = em?.getRepository(klass),
-      queryBuilder = repo?.createQueryBuilder(baseAlias),
+      queryBuilder = subquery
+        ? em?.createQueryBuilder().subQuery().from(klass, baseAlias)
+        : repo?.createQueryBuilder(baseAlias),
     }: {
       baseAlias?: string
       liveObjectAlias?: string
       em?: EntityManager
       repo?: Repository<T>
       queryBuilder?: SelectQueryBuilder<T>
+      subquery?: boolean
     } = {},
   ): SelectQueryBuilder<T> | null {
     return queryBuilder?.innerJoin(
@@ -1901,7 +1866,7 @@ export class TypeORMDatabaseBackend
 
   private getSortedSetRangeBaseQuery({
     id,
-    sort,
+    sort = 'ASC',
     start = 0,
     ...rest
   }: getSortedSetRangeInnerParams): SelectQueryBuilder<SortedSetObject> {
@@ -1932,25 +1897,24 @@ export class TypeORMDatabaseBackend
       const { min, max, count } = rest.byLex
       limit = count
       baseQuery = baseQuery.orderBy('z.member', sort).offset(start)
-      // Educated guess
-      const collate =
-        databasePersonality[this.databaseType]?.quirks?.collation?.binary ??
-        'BINARY'
+      const binaryCollation =
+        databasePersonality[this.databaseType]?.quirks?.collation?.binary
+      const collate = binaryCollation ? `COLLATE ${binaryCollation}` : ''
       if (min !== '-') {
-        const [operator, params] =
-          convertRedisStyleRangeStringToTypeormCriterion(min, 'min')
+        const [operator, minText] = intervalToSqlFunction(min, 'min')
 
         baseQuery = baseQuery.andWhere(
-          `z.member ${operator} COLLATE ${collate}`,
-          params,
+          `z.member ${operator} :minText ${collate}`,
+          {
+            minText,
+          },
         )
       }
       if (max !== '+') {
-        const [operator, params] =
-          convertRedisStyleRangeStringToTypeormCriterion(max, 'max')
+        const [operator, maxText] = intervalToSqlFunction(max, 'max')
         baseQuery = baseQuery.andWhere(
-          `z.member ${operator} COLLATE ${collate}`,
-          params,
+          `z.member ${operator} :maxText ${collate}`,
+          { maxText },
         )
       }
     }

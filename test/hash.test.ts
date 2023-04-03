@@ -1,10 +1,32 @@
-import { suite, test, timeout } from '@testdeck/jest'
+import { suite, test } from '@testdeck/jest'
+import { Inject, Service } from 'typedi'
 
-import { TestSuiteBase } from './suite_base'
+import { DATABASE } from './setup'
 
-@suite()
-@timeout(60000)
-export class HashTest extends TestSuiteBase {
+import type { TypeORMDatabaseBackend } from '~/index'
+
+@suite
+@Service()
+export class HashTest {
+  static db: TypeORMDatabaseBackend
+  db: TypeORMDatabaseBackend
+
+  constructor(
+    @Inject(DATABASE)
+    private readonly dbFactory: () => TypeORMDatabaseBackend,
+  ) {}
+
+  async before(): Promise<void> {
+    if (!HashTest.db) {
+      this.db = HashTest.db = this.dbFactory()
+    }
+    await this.db.flushdb()
+  }
+
+  static async after(): Promise<void> {
+    await HashTest.db.close()
+  }
+
   @test
   async 'test object'(): Promise<void> {
     await this.db.setObjectField(['test', 'test1'], 'foo', 'bar')

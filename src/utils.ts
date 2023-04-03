@@ -1,6 +1,3 @@
-import { MoreThan, MoreThanOrEqual } from 'typeorm'
-import { FindOperator } from 'typeorm/find-options/FindOperator'
-
 import { RedisStyleMatchString, RedisStyleRangeString } from '../types'
 
 export function fixRange(
@@ -13,11 +10,11 @@ export function fixRange(
   // given an example of [1 2 3 4 5 6]
 
   // if we have something like {start:0, stop: -2}
-  // we certainly cant make assumption about row sizes but
+  // we certainly can't make assumption about row sizes but
   if (start === 0 && stop < 0) {
     // we can flip the rows around
     // now the rows are [6 5 4 3 2 1]
-    // we want to skip the first row (since we want from 0 until the penultimate entry)
+    // we want to skip the first row (since -1 is the ultimate, we want -2 the penultimate entry)
     // which means offset by one -> [5 4 3 2 1]
     ;[start, stop] = [Math.abs(stop + 1), -1]
     // now we can flip this around and get [1 2 3 4 5] which is what we wanted
@@ -27,7 +24,7 @@ export function fixRange(
     // we can flip the rows around -> [6 5 4 3 2 1] and we want to start at second row
     // and select until fourth row -> [6 5 {4 3 2} 1] and then flip this around again
     // using our example -> [1 {2 3 4} 5 6] -> [2 3 4] selected which is 1..3
-    // which is {start: abs(oldStop) + 1, stop: abs(oldStart) + 1}
+    // which is {start: abs(oldStop + 1), stop: abs(oldStart + 1)}
     ;[start, stop] = [Math.abs(stop + 1), Math.abs(start + 1)]
   }
   // TODO: handle case such as {start: 1, end: -2} -> [1 {2 3 4} 5 6]
@@ -63,17 +60,19 @@ export function convertRedisStyleMatchToSqlWildCard(
   return [query, hasWildcard]
 }
 
-export function convertRedisStyleRangeStringToTypeormCriterion(
+export function intervalToSqlFunction(
   input: RedisStyleRangeString,
-): FindOperator<number> {
-  const [first, ...rest] = input
-  if (first === '(') {
-    return MoreThan(Number(rest.join()))
+  direction: 'min' | 'max',
+): [operator: string, capture: string] {
+  const isMin = direction === 'min'
+  const open = input[0] === '('
+  const closed = input[0] === '['
+  const capture = open || closed ? input.slice(1) : input
+  if (open) {
+    return [isMin ? '>' : '<', capture]
+  } else {
+    return [isMin ? '>=' : '<=', capture]
   }
-  if (first === '[') {
-    return MoreThanOrEqual(Number(rest.join()))
-  }
-  return MoreThanOrEqual(Number(input))
 }
 
 export function validateInput<T>(arrays: T[][]): void {

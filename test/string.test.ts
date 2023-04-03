@@ -1,10 +1,33 @@
 import { suite, test, timeout } from '@testdeck/jest'
+import { Inject, Service } from 'typedi'
 
-import { TestSuiteBase } from './suite_base'
+import { DATABASE } from './setup'
 
-@suite()
+import type { TypeORMDatabaseBackend } from '~/index'
+
+@suite
 @timeout(60000)
-export class StringTest extends TestSuiteBase {
+@Service()
+export class StringTest {
+  static db: TypeORMDatabaseBackend
+  db: TypeORMDatabaseBackend
+
+  constructor(
+    @Inject(DATABASE)
+    private readonly dbFactory: () => TypeORMDatabaseBackend,
+  ) {}
+
+  async before(): Promise<void> {
+    if (!StringTest.db) {
+      this.db = StringTest.db = this.dbFactory()
+    }
+    await this.db.flushdb()
+  }
+
+  static async after(): Promise<void> {
+    await StringTest.db.close()
+  }
+
   @test
   async 'test simple string'(): Promise<void> {
     await this.db.set('test', '3456')

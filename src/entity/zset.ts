@@ -35,7 +35,58 @@ export class SortedSetObjectSubscriber extends TypedObjectSubscriber(
   SortedSetObject,
 ) {}
 
-abstract class ReorderedSortedSetObjectBase {
+@ViewEntity('zset_reordered', {
+  expression(conn) {
+    if (false) {
+      return conn
+        .createQueryBuilder(SortedSetObject, 'z')
+        .select('z.id', 'id')
+        .addSelect('z.member', 'member')
+        .addSelect('z.score', 'score')
+        .addSelect(
+          `RANK() OVER (PARTITION BY z.id ORDER BY z.score ASC, z.member ASC) - 1`,
+          'rank',
+        )
+        .addSelect(
+          `-(RANK() OVER (PARTITION BY z.id ORDER BY z.score DESC, z.member DESC))`,
+          'rank_back',
+        )
+    } else {
+      const helper = (qb, condition) =>
+        qb
+          .from(SortedSetObject, 'z')
+          .leftJoinAndSelect(
+            SortedSetObject,
+            'z1',
+            `z.id = z1.id AND (${condition})`,
+          )
+          .select('z.id', 'id')
+          .addSelect('z.member', 'member')
+          .addSelect('z.score', 'score')
+          .groupBy('z.id')
+          .addGroupBy('z.member')
+          .addGroupBy('z.score')
+
+      return conn
+        .createQueryBuilder()
+        .addFrom((qb) => {
+          const condition = `z.score > z1.score or (z.score = z1.score and z.member >= z1.member)`
+          return helper(qb, condition).addSelect(`COUNT(z1.id) - 1`, 'rank')
+        }, 'front')
+        .addFrom((qb) => {
+          const condition = `z.score < z1.score or (z.score = z1.score and z.member <= z1.member)`
+          return helper(qb, condition).addSelect(`-COUNT(z1.id)`, 'rank')
+        }, 'back')
+        .where(`front.id = back.id and front.member = back.member`)
+        .addSelect('front.id', 'id')
+        .addSelect('front.member', 'member')
+        .addSelect('front.score', 'score')
+        .addSelect('front.rank', 'rank')
+        .addSelect('back.rank', 'rank_back')
+    }
+  },
+})
+export class ReorderedSortedSetObject {
   @PrimaryColumn()
   readonly id: string
 
@@ -43,71 +94,15 @@ abstract class ReorderedSortedSetObjectBase {
   readonly member: string
 
   @PrimaryColumn({ type: 'int' })
-  @Index()
   readonly score: number
 
   @Column({ type: 'int' })
-  @Index()
   readonly rank: number
+
+  @Column({ type: 'int' })
+  @Index()
+  readonly rank_back: number
 }
-
-function makeOrder(
-  conn: DataSource,
-  sort: '<' | '>',
-): SelectQueryBuilder<SortedSetObject> {
-  const addStandardRows = (
-    qb: SelectQueryBuilder<SortedSetObject>,
-  ): SelectQueryBuilder<SortedSetObject> =>
-    qb
-      .addSelect('z.id', 'id')
-      .addSelect('z.member', 'member')
-      .addSelect('z.score', 'score')
-
-  let withRank: SelectQueryBuilder<SortedSetObject>
-
-  if (false) {
-    const order = sort === '>' ? 'ASC' : 'DESC'
-    withRank = conn
-      .createQueryBuilder(SortedSetObject, 'z')
-      .addSelect(
-        `RANK() OVER (PARTITION BY z.id ORDER BY z.score ${order}, z.member ${order}) - 1`,
-        'rank',
-      )
-      .addSelect(
-        `RANK() OVER (PARTITION BY z.id ORDER BY z.score ${order}, z.member ${order}) - 1`,
-        'rank_back',
-      )
-  } else {
-    const sorts = [
-      `z.score ${sort} z1.score`,
-      `z.score = z1.score and (z.member ${sort} z1.member)`,
-    ]
-
-    const conditions = sorts.map((q) => `(${q})`).join(' OR ')
-    withRank = conn
-      .createQueryBuilder(SortedSetObject, 'z')
-      .leftJoinAndSelect(
-        SortedSetObject,
-        'z1',
-        `z.id = z1.id AND (${conditions})`,
-      )
-      .select(`COUNT(z1.id)`, 'rank')
-      .groupBy('z.id')
-      .addGroupBy('z.member')
-  }
-
-  return addStandardRows(withRank)
-}
-
-@ViewEntity('zset_reordered', {
-  expression: (conn) => makeOrder(conn, '>'),
-})
-export class ReorderedSortedSetObject extends ReorderedSortedSetObjectBase {}
-
-@ViewEntity('zset_reordered_rev', {
-  expression: (conn) => makeOrder(conn, '<'),
-})
-export class ReorderedSortedSetObjectReversed extends ReorderedSortedSetObjectBase {}
 
 @ViewEntity('zset_lex_ordered', {
   expression(conn) {

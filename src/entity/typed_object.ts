@@ -7,6 +7,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
+  Relation,
 } from 'typeorm'
 
 import { DbObject, ObjectType } from './object'
@@ -42,7 +43,7 @@ export const TypedObject = (type: ObjectType) => {
         referencedColumnName: 'type',
       },
     ])
-    parent: DbObject
+    parent: Relation<DbObject>
   }
 
   return TypedObjectInner
@@ -59,16 +60,16 @@ export const TypedObjectSubscriber = <
     }
 
     async beforeInsert(event: InsertEvent<T>): Promise<void> {
-      const repo = event.manager.getRepository(DbObject)
-
-      await repo
+      const {
+        entity: { id, type },
+        manager,
+      } = event
+      await manager
+        .getRepository(DbObject)
         .createQueryBuilder()
         .insert()
         .orIgnore()
-        .values({
-          id: event.entity.id,
-          type: event.entity.type,
-        })
+        .values({ id, type })
         .execute()
     }
   }
