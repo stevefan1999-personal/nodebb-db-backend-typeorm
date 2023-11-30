@@ -2,7 +2,6 @@ import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
 import autoExternal from 'rollup-plugin-auto-external'
-import obfuscator from 'rollup-plugin-obfuscator'
 import { swc, minify } from 'rollup-plugin-swc3'
 
 export default {
@@ -23,15 +22,5 @@ export default {
     commonjs(),
     json(),
     autoExternal(),
-    obfuscator({
-      globalOptions: {
-        identifierNamesGenerator: 'mangled-shuffled',
-        selfDefending: true,
-        splitStrings: true,
-        stringArrayEncoding: ['base64'],
-        stringArrayThreshold: 1,
-        target: 'node',
-      },
-    }),
   ],
 }
