@@ -33,7 +33,7 @@ import {
   StringQueryable,
   SupportedDatabaseConnectionOptions,
   ValueAndScore,
-} from '../types'
+} from '../types/database'
 
 import {
   databasePersonality,
